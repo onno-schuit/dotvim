@@ -1,0 +1,1 @@
+colorscheme javascript_white
