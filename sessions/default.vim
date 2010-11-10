@@ -1,5 +1,5 @@
 " ~/.vim/sessions/default.vim: Vim session script.
-" Created by session.vim on 14 October 2010 at 20:59:53.
+" Created by session.vim on 10 November 2010 at 11:22:09.
 " Open this file in Vim and run :source % to restore your session.
 
 set guioptions=egimrLtTba
@@ -15,24 +15,21 @@ if &cp | set nocp | endif
 let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
 let v:this_session=expand("<sfile>:p")
 silent only
-cd ~/rails/smallcamp
+cd ~/php/kompas/public_html
 if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
 set shortmess=aoO
-badd +1 app/views/guests/index.html.erb
-badd +20 app/views/guests/_list.html.erb
-badd +245 app/controllers/guests_controller.rb
-badd +84 app/models/guest.rb
-badd +1 app/views/guests/print.html.erb
-badd +21 config/locales/nl.yml
-badd +22 config/locales/en.yml
-badd +3 app/views/guests/_navigation_buttons.html.erb
-badd +1 app/models/person.rb
-badd +1 [BufExplorer]
-args [BufExplorer]
+badd +22 mod/compass/view.php
+badd +3 mod/compass/test.php
+badd +34 mod/compass/class.compass_autofiller.php
+badd +18 mod/compass/forms.yaml
+badd +24 mod/compass/helper_methods.php
+badd +46 mod/compass/db/install.xml
+badd +76 config.php
+args ~/rails/smallcamp/[BufExplorer]
 set lines=45 columns=164
-edit app/models/guest.rb
+edit mod/compass/class.compass_autofiller.php
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -48,12 +45,12 @@ setlocal fml=1
 setlocal fdn=20
 setlocal fen
 silent! normal! zE
-let s:l = 81 - ((25 * winheight(0) + 21) / 43)
+let s:l = 34 - ((3 * winheight(0) + 21) / 43)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-81
-normal! 04l
+34
+normal! 0
 tabnext 1
 if exists('s:wipebuf')
   silent exe 'bwipe ' . s:wipebuf
