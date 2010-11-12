@@ -1,15 +1,15 @@
 " ~/.vim/sessions/default.vim: Vim session script.
-" Created by session.vim on 10 November 2010 at 11:22:09.
+" Created by session.vim on 12 November 2010 at 09:35:59.
 " Open this file in Vim and run :source % to restore your session.
 
-set guioptions=egimrLtTba
+set guioptions=egimrLtTa
 set guifont=Bitstream\ Vera\ Sans\ Mono\ 12
 if exists('g:syntax_on') != 1 | syntax on | endif
 if exists('g:did_load_filetypes') != 1 | filetype on | endif
 if exists('g:did_load_ftplugin') != 1 | filetype plugin on | endif
 if exists('g:did_indent_on') != 1 | filetype indent on | endif
 if !exists('g:colors_name') || g:colors_name != 'ir_white' | colorscheme ir_white | endif
-call setqflist([{'lnum': 188, 'col': 48, 'valid': 1, 'vcol': 0, 'nr': 0, 'type': '', 'pattern': '', 'filename': 'app/controllers/guests_controller.rb', 'text': '    @guests = current_user.organization.guests.present_during(@date, @end_date).paginate('}, {'lnum': 204, 'col': 48, 'valid': 1, 'vcol': 0, 'nr': 0, 'type': '', 'pattern': '', 'filename': 'app/controllers/guests_controller.rb', 'text': '    @guests = current_user.organization.guests.present_during(@date, @end_date).find(:all, :include => :allotments)'}, {'lnum': 28, 'col': 16, 'valid': 1, 'vcol': 0, 'nr': 0, 'type': '', 'pattern': '', 'filename': 'app/models/guest.rb', 'text': '  named_scope :present_during, lambda { |start_date, end_date|'}])
+call setqflist([])
 let SessionLoad = 1
 if &cp | set nocp | endif
 let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
@@ -20,16 +20,11 @@ if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
 set shortmess=aoO
-badd +22 mod/compass/view.php
-badd +3 mod/compass/test.php
-badd +34 mod/compass/class.compass_autofiller.php
-badd +18 mod/compass/forms.yaml
-badd +24 mod/compass/helper_methods.php
-badd +46 mod/compass/db/install.xml
-badd +76 config.php
-args ~/rails/smallcamp/[BufExplorer]
+badd +1 mod/compass/class.compass_autofiller.php
+badd +10 mod/compass/class.compass_form_builder.php
+silent! argdel *
 set lines=45 columns=164
-edit mod/compass/class.compass_autofiller.php
+edit mod/compass/class.compass_form_builder.php
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -45,12 +40,12 @@ setlocal fml=1
 setlocal fdn=20
 setlocal fen
 silent! normal! zE
-let s:l = 34 - ((3 * winheight(0) + 21) / 43)
+let s:l = 11 - ((10 * winheight(0) + 21) / 43)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-34
-normal! 0
+11
+normal! 027l
 tabnext 1
 if exists('s:wipebuf')
   silent exe 'bwipe ' . s:wipebuf
