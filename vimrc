@@ -133,4 +133,3 @@ map <F3> :BufExplorer <CR>
 " bclose.vim closes the buffer without closing the containing window - useful
 " for minibufferexplorer and nerdtree (http://vim.wikia.com/wiki/VimTip165)
 nnoremap <silent> <Leader>bd :Bclose<CR>
-

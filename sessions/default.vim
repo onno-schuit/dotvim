@@ -1,8 +1,8 @@
 " ~/.vim/sessions/default.vim: Vim session script.
-" Created by session.vim on 12 November 2010 at 09:35:59.
+" Created by session.vim on 03 December 2010 at 13:19:31.
 " Open this file in Vim and run :source % to restore your session.
 
-set guioptions=egimrLtTa
+set guioptions=egimrLtTab
 set guifont=Bitstream\ Vera\ Sans\ Mono\ 12
 if exists('g:syntax_on') != 1 | syntax on | endif
 if exists('g:did_load_filetypes') != 1 | filetype on | endif
@@ -20,11 +20,13 @@ if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
 set shortmess=aoO
-badd +1 mod/compass/class.compass_autofiller.php
-badd +10 mod/compass/class.compass_form_builder.php
+badd +320 mod/compass/forms.yaml
+badd +94 mod/compass/class.compass_routes.php
+badd +52 mod/compass/class.compass_shared.php
+badd +36 mod/compass/class.compass_studystyles.php
 silent! argdel *
 set lines=45 columns=164
-edit mod/compass/class.compass_form_builder.php
+edit mod/compass/class.compass_studystyles.php
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -40,12 +42,12 @@ setlocal fml=1
 setlocal fdn=20
 setlocal fen
 silent! normal! zE
-let s:l = 11 - ((10 * winheight(0) + 21) / 43)
+let s:l = 40 - ((19 * winheight(0) + 21) / 43)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-11
-normal! 027l
+40
+normal! 035l
 tabnext 1
 if exists('s:wipebuf')
   silent exe 'bwipe ' . s:wipebuf
