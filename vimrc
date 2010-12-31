@@ -73,6 +73,8 @@ au VimLeavePre * NERDTreeClose
  
 syntax enable
 
+runtime macros/matchit.vim
+
 
 set cf  " Enable error files & error jumping.
 set clipboard+=unnamed  " Yanks go on clipboard instead.
