@@ -33,6 +33,13 @@ vnoremap <silent> <F5> :<C-U>let @/="<C-R>=MakePattern(@*)<CR>"<CR>:set hls<CR>
 " Press F8 to toggle highlighting on/off, and show current value.
 :noremap <F8> :set hlsearch! hlsearch?<CR>
 
+" Press S to replace the current word with the last yanked text (use cc
+" instead of S to replace the current line)
+nnoremap S diw"0P
+" Replace the visually selected text with the last yanked text
+vnoremap S "_d"0P
+
+
 function! OperateOutsideSelection(cmd)
   let cmd = a:cmd
   execute "0,'<-1 " . cmd  | execute "'>+1, $ " . cmd 
