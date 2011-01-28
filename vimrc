@@ -39,6 +39,8 @@ nnoremap S diw"0P
 " Replace the visually selected text with the last yanked text
 vnoremap S "_d"0P
 
+" Accidentally using :W instead of :w
+cab W w
 
 function! OperateOutsideSelection(cmd)
   let cmd = a:cmd
