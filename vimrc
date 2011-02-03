@@ -144,3 +144,17 @@ map <F3> :BufExplorer <CR>
 " bclose.vim closes the buffer without closing the containing window - useful
 " for minibufferexplorer and nerdtree (http://vim.wikia.com/wiki/VimTip165)
 nnoremap <silent> <Leader>bd :Bclose<CR>
+
+
+" Syntastic Settings
+"SyntasticEnable php
+"SyntasticEnable javascript
+"SyntasticEnable ruby
+
+set statusline+=%#warningmsg#
+set statusline+=%{SyntasticStatuslineFlag()}
+set statusline+=%*
+let g:syntastic_enable_signs=1
+let g:syntastic_auto_loc_list=1
+"Following setting suppresses not only php warnings, but errors as well!
+"let g:syntastic_quiet_warnings=1

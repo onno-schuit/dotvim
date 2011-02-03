@@ -28,6 +28,10 @@
 'showmarks_textother'	showmarks.txt	/*'showmarks_textother'*
 'showmarks_textupper'	showmarks.txt	/*'showmarks_textupper'*
 'snippets'	snipMate.txt	/*'snippets'*
+'syntastic_auto_loc_list'	syntastic.txt	/*'syntastic_auto_loc_list'*
+'syntastic_disabled_filetypes'	syntastic.txt	/*'syntastic_disabled_filetypes'*
+'syntastic_enable_signs'	syntastic.txt	/*'syntastic_enable_signs'*
+'syntastic_quiet_warnings'	syntastic.txt	/*'syntastic_quiet_warnings'*
 .snippet	snipMate.txt	/*.snippet*
 .snippets	snipMate.txt	/*.snippets*
 :CheckSyntax	checksyntax.txt	/*:CheckSyntax*
@@ -35,6 +39,7 @@
 :CommandT	command-t.txt	/*:CommandT*
 :CommandTFlush	command-t.txt	/*:CommandTFlush*
 :DeleteSession	session.txt	/*:DeleteSession*
+:Errors	syntastic.txt	/*:Errors*
 :FufBookmarkDir	fuf.txt	/*:FufBookmarkDir*
 :FufBookmarkDirAdd	fuf.txt	/*:FufBookmarkDirAdd*
 :FufBookmarkFile	fuf.txt	/*:FufBookmarkFile*
@@ -93,6 +98,8 @@
 :RmVimball	pi_vimball.txt	/*:RmVimball*
 :SBSettings	selectbuf.txt	/*:SBSettings*
 :SaveSession	session.txt	/*:SaveSession*
+:SyntasticDisable	syntastic.txt	/*:SyntasticDisable*
+:SyntasticEnable	syntastic.txt	/*:SyntasticEnable*
 :TextobjRubyblockDefaultKeyMappings	textobj-rubyblock.txt	/*:TextobjRubyblockDefaultKeyMappings*
 :UseVimball	pi_vimball.txt	/*:UseVimball*
 :ViewSession	session.txt	/*:ViewSession*
@@ -230,6 +237,7 @@ ShowMarksClearMark	showmarks.txt	/*ShowMarksClearMark*
 ShowMarksOn	showmarks.txt	/*ShowMarksOn*
 ShowMarksPlaceMark	showmarks.txt	/*ShowMarksPlaceMark*
 ShowMarksToggle	showmarks.txt	/*ShowMarksToggle*
+SyntasticMake()	syntastic.txt	/*SyntasticMake()*
 Vimball-copyright	pi_vimball.txt	/*Vimball-copyright*
 [%	matchit.txt	/*[%*
 [<Space>	unimpaired.txt	/*[<Space>*
@@ -817,6 +825,21 @@ surround-mappings	surround.txt	/*surround-mappings*
 surround-replacements	surround.txt	/*surround-replacements*
 surround-targets	surround.txt	/*surround-targets*
 surround.txt	surround.txt	/*surround.txt*
+syntastic	syntastic.txt	/*syntastic*
+syntastic-about	syntastic.txt	/*syntastic-about*
+syntastic-changelog	syntastic.txt	/*syntastic-changelog*
+syntastic-commands	syntastic.txt	/*syntastic-commands*
+syntastic-contents	syntastic.txt	/*syntastic-contents*
+syntastic-credits	syntastic.txt	/*syntastic-credits*
+syntastic-error-signs	syntastic.txt	/*syntastic-error-signs*
+syntastic-error-window	syntastic.txt	/*syntastic-error-window*
+syntastic-functionality	syntastic.txt	/*syntastic-functionality*
+syntastic-intro	syntastic.txt	/*syntastic-intro*
+syntastic-license	syntastic.txt	/*syntastic-license*
+syntastic-options	syntastic.txt	/*syntastic-options*
+syntastic-statusline-flag	syntastic.txt	/*syntastic-statusline-flag*
+syntastic-syntax-checkers	syntastic.txt	/*syntastic-syntax-checkers*
+syntastic.txt	syntastic.txt	/*syntastic.txt*
 textobj#user#define()	textobj-user.txt	/*textobj#user#define()*
 textobj#user#move()	textobj-user.txt	/*textobj#user#move()*
 textobj#user#plugin()	textobj-user.txt	/*textobj#user#plugin()*
