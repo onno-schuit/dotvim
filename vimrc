@@ -63,7 +63,8 @@ highlight ShowMarksHLm gui=bold
 "let g:miniBufExplMapWindowNavVim = 1
 let g:miniBufExplMapWindowNavArrows = 1
 "let g:miniBufExplMapCTabSwitchBufs = 1
-"let g:miniBufExplModSelTarget = 1
+let g:miniBufExplModSelTarget = 1 "force miniBufExpl to try to place selected buffers into a window
+"                                  that does not have a nonmodifiable buffer
 
 " Kill MBE (minibufferexplorer) just before writing .viminfo; it buggers up the session
 autocmd VimLeavePre * 
