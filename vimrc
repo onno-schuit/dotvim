@@ -159,3 +159,8 @@ let g:syntastic_enable_signs=1
 let g:syntastic_auto_loc_list=1
 "Following setting suppresses not only php warnings, but errors as well!
 "let g:syntastic_quiet_warnings=1
+
+
+map <C-PageDown> :bn<CR>
+map <C-PageUp> :bp<CR>
+
