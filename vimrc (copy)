@@ -165,4 +165,3 @@ map <C-PageDown> :bn<CR>
 map <C-PageUp> :bp<CR>
 
 set background=light
-set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v
