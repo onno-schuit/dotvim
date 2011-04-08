@@ -166,3 +166,4 @@ map <C-PageUp> :bp<CR>
 
 set background=light
 set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v
+au BufEnter -MiniBufExplorer- setlocal statusline=\ 
