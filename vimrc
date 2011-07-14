@@ -140,7 +140,9 @@ let NERDTreeShowBookmarks = 1
 let NERDTreeChDirMode = 2
 
 map <F2> :FufFile <CR>
-map <F3> :BufExplorer <CR>
+
+" Clean up (reformat) html or xml 
+map <F3> :%!tidy -i -q -w 0 -xml <CR>
 
 " bclose.vim closes the buffer without closing the containing window - useful
 " for minibufferexplorer and nerdtree (http://vim.wikia.com/wiki/VimTip165)
@@ -167,3 +169,24 @@ map <C-PageUp> :bp<CR>
 set background=light
 set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v
 au BufEnter -MiniBufExplorer- setlocal statusline=\ 
+
+" This adds :G <pattern> command to run the command from within Vim.
+func GitGrep(...)
+  let save = &grepprg
+  set grepprg=git\ grep\ -n\ $*
+  let s = 'grep'
+  for i in a:000
+    let s = s . ' ' . i
+  endfor
+  exe s
+  let &grepprg = save
+endfun
+command -nargs=? G call GitGrep(<f-args>)
+
+" Press Ctrl-X twice to run git grep on the word under the cursor
+func GitGrepWord()
+  normal! "zyiw
+  call GitGrep('-w -e ', getreg('z'))
+endf
+nmap <C-x><C-x> :call GitGrepWord()<CR>
+
