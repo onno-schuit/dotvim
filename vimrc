@@ -181,10 +181,13 @@ func GitGrep(...)
 endfun
 command -nargs=? G call GitGrep(<f-args>)
 
-" Press Ctrl-X to run git grep on the word under the cursor
+" Press Ctrl-X twice to run git grep on the word under the cursor
 func GitGrepWord()
   normal! "zyiw
   call GitGrep('-w -e ', getreg('z'))
 endf
-nmap <C-x>G :call GitGrepWord()<CR>
+nmap <C-x><C-x> :call GitGrepWord()<CR>
+
+let vimclojure#HighlightBuiltins=1 
+let vimclojure#ParenRainbow=1
 
