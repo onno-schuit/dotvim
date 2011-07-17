@@ -140,7 +140,9 @@ let NERDTreeShowBookmarks = 1
 let NERDTreeChDirMode = 2
 
 map <F2> :FufFile <CR>
-map <F3> :BufExplorer <CR>
+
+" Clean up (reformat) html or xml 
+map <F3> :%!tidy -i -q -w 0 -xml <CR>
 
 " bclose.vim closes the buffer without closing the containing window - useful
 " for minibufferexplorer and nerdtree (http://vim.wikia.com/wiki/VimTip165)
@@ -190,4 +192,3 @@ nmap <C-x><C-x> :call GitGrepWord()<CR>
 
 let vimclojure#HighlightBuiltins=1 
 let vimclojure#ParenRainbow=1
-
