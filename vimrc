@@ -190,3 +190,5 @@ func GitGrepWord()
 endf
 nmap <C-x><C-x> :call GitGrepWord()<CR>
 
+let vimclojure#HighlightBuiltins=1 
+let vimclojure#ParenRainbow=1
