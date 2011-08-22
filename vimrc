@@ -1,3 +1,4 @@
+set background=light
 set guifont=Bitstream\ Vera\ Sans\ Mono\ 12
 set nowrap  " Line wrapping off
 set cursorline
@@ -166,7 +167,6 @@ let g:syntastic_auto_loc_list=1
 map <C-PageDown> :bn<CR>
 map <C-PageUp> :bp<CR>
 
-set background=light
 set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v
 au BufEnter -MiniBufExplorer- setlocal statusline=\ 
 
