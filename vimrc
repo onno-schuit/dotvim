@@ -190,5 +190,13 @@ func GitGrepWord()
 endf
 nmap <C-x><C-x> :call GitGrepWord()<CR>
 
+
+" Shortcut to rapidly toggle `set list`
+nmap <leader>l :set list!<CR>
+
+" Use the same symbols as TextMate for tabstops and EOLs
+set listchars=tab:▸\ ,eol:¬
+
+
 let vimclojure#HighlightBuiltins=1 
 let vimclojure#ParenRainbow=1
