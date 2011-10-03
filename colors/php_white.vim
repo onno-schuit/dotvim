@@ -153,8 +153,8 @@ hi link SpecialComment  Special
 hi link Debug           Special
 
 "Invisible character colors
-highlight NonText guifg=#CCCCCC
-highlight SpecialKey guifg=#CCCCCC
+highlight NonText guifg=#CCCCCC     guibg=white
+highlight SpecialKey guifg=#CCCCCC  guibg=white
 
 " Special for PHP
 
