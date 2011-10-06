@@ -200,3 +200,5 @@ set listchars=tab:▸\ ,eol:¬
 
 let vimclojure#HighlightBuiltins=1 
 let vimclojure#ParenRainbow=1
+" Don't let the phpfolding plugin automatically fold everything
+let g:DisableAutoPHPFolding = 1
