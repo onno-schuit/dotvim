@@ -1,3 +1,4 @@
+set background=light
 set guifont=Bitstream\ Vera\ Sans\ Mono\ 12
 set nowrap  " Line wrapping off
 set cursorline
@@ -166,7 +167,6 @@ let g:syntastic_auto_loc_list=1
 map <C-PageDown> :bn<CR>
 map <C-PageUp> :bp<CR>
 
-set background=light
 set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v
 au BufEnter -MiniBufExplorer- setlocal statusline=\ 
 
@@ -190,5 +190,15 @@ func GitGrepWord()
 endf
 nmap <C-x><C-x> :call GitGrepWord()<CR>
 
+
+" Shortcut to rapidly toggle `set list`
+nmap <leader>l :set list!<CR>
+
+" Use the same symbols as TextMate for tabstops and EOLs
+set listchars=tab:▸\ ,eol:¬
+
+
 let vimclojure#HighlightBuiltins=1 
 let vimclojure#ParenRainbow=1
+" Don't let the phpfolding plugin automatically fold everything
+let g:DisableAutoPHPFolding = 1

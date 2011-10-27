@@ -81,6 +81,7 @@ hi Folded           guifg=#a0a8b0     guibg=#384048     gui=NONE      ctermfg=NO
 hi Title            guifg=black       guibg=NONE        gui=NONE      ctermfg=NONE        ctermbg=NONE        cterm=NONE
 hi treeDir          guifg=#729FCF     guibg=white       gui=bold
 
+
 " Color of selection block:
 hi Visual           guifg=NONE        guibg=#9999FF     gui=NONE      ctermfg=NONE        ctermbg=darkgray    cterm=NONE
 
@@ -151,6 +152,9 @@ hi link SpecialChar     Special
 hi link SpecialComment  Special
 hi link Debug           Special
 
+"Invisible character colors
+highlight NonText guifg=#CCCCCC     guibg=white
+highlight SpecialKey guifg=#CCCCCC  guibg=white
 
 " Special for PHP
 
