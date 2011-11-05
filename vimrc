@@ -202,3 +202,7 @@ let vimclojure#HighlightBuiltins=1
 let vimclojure#ParenRainbow=1
 " Don't let the phpfolding plugin automatically fold everything
 let g:DisableAutoPHPFolding = 1
+
+au BufRead,BufNewFile *.html set filetype=php
+
+let g:CommandTMaxFiles=20000
