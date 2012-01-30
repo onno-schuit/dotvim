@@ -167,7 +167,7 @@ let g:syntastic_auto_loc_list=1
 map <C-PageDown> :bn<CR>
 map <C-PageUp> :bp<CR>
 
-set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v
+set statusline=%#warningmsg#%{SyntasticStatuslineFlag()}%*\ row:%l,col:%v\ \-\ %f
 au BufEnter -MiniBufExplorer- setlocal statusline=\ 
 
 " This adds :G <pattern> command to run the command from within Vim.
