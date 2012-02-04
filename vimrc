@@ -143,7 +143,7 @@ let NERDTreeChDirMode = 2
 map <F2> :FufFile <CR>
 
 " Clean up (reformat) html or xml 
-map <F3> :%!tidy -i -q -w 0 -xml <CR>
+map <F3> :%!tidy -i -q -w 0 -xml -utf8 <CR>
 
 " bclose.vim closes the buffer without closing the containing window - useful
 " for minibufferexplorer and nerdtree (http://vim.wikia.com/wiki/VimTip165)
