@@ -20,6 +20,10 @@ set viminfo^=!
 " Searches word under cursor in the current directory and all subdirectories, opening the quickfix window when done
 map <F4> :execute "vimgrep /" . expand("<cword>") . "/j **" <Bar> cw<CR>
 
+
+" Show horizontal scrollbar at startup
+set guioptions+=b
+
 set hlsearch
 " Pressing F5 will highlight all occurrences of the current word or selection 
 set guioptions+=a
@@ -143,7 +147,7 @@ let NERDTreeChDirMode = 2
 map <F2> :FufFile <CR>
 
 " Clean up (reformat) html or xml 
-map <F3> :%!tidy -i -q -w 0 -xml <CR>
+map <F3> :%!tidy -i -q -w 0 -xml -utf8 <CR>
 
 " bclose.vim closes the buffer without closing the containing window - useful
 " for minibufferexplorer and nerdtree (http://vim.wikia.com/wiki/VimTip165)
