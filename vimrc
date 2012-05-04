@@ -10,6 +10,7 @@ filetype plugin on
 set nocompatible  " We don't want vi compatibility.
 
 let mapleader = ","
+let maplocalleader = ","
 
 " Saves current session when you exit
 "au VimLeavePre * if v:this_session != '' | exec "mks! " . v:this_session | endif 
@@ -202,8 +203,16 @@ nmap <leader>l :set list!<CR>
 set listchars=tab:▸\ ,eol:¬
 
 
-let vimclojure#HighlightBuiltins=1 
+" Settings for the VimClojure plugin
+let vimclojure#FuzzyIndent=1
+let vimclojure#HighlightBuiltins=1
+let vimclojure#HighlightContrib=1
+let vimclojure#DynamicHighlighting=1
+let vimclojure#WantNailgun=1
+let vimclojure#NailgunClient = $HOME . "/.vim/lib/vimclojure-nailgun-client/ng"
 let vimclojure#ParenRainbow=1
+
+
 " Don't let the phpfolding plugin automatically fold everything
 let g:DisableAutoPHPFolding = 1
 
