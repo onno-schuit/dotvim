@@ -1,5 +1,6 @@
 set background=light
 set guifont=Bitstream\ Vera\ Sans\ Mono\ 12
+set guioptions-=T  "remove toolbar
 set nowrap  " Line wrapping off
 set cursorline
 set hidden " <<This means that the buffer of the old file will only be hidden when you switch to the new file. When you switch back, you still have your undo history. >>
