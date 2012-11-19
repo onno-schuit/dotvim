@@ -27,8 +27,9 @@ map <F4> :execute "vimgrep /" . expand("<cword>") . "/j **" <Bar> cw<CR>
 set guioptions+=b
 
 set hlsearch
-" Pressing F5 will highlight all occurrences of the current word or selection 
 set guioptions+=a
+
+
 function! MakePattern(text)
   let pat = escape(a:text, '\')
   let pat = substitute(pat, '\_s\+$', '\\s\\*', '')
@@ -36,7 +37,15 @@ function! MakePattern(text)
   let pat = substitute(pat, '\_s\+',  '\\_s\\+', 'g')
   return '\\V' . escape(pat, '\"')
 endfunction
-vnoremap <silent> <F5> :<C-U>let @/="<C-R>=MakePattern(@*)<CR>"<CR>:set hls<CR>
+
+"" Pressing F5 will highlight all occurrences of the current word or selection 
+" vnoremap <silent> <F5> :<C-U>let @/="<C-R>=MakePattern(@*)<CR>"<CR>:set hls<CR>
+
+" When F5 is pressed, a numbered list of file names is printed, and the user needs 
+" to type a single number based on the 'menu' and press enter.
+:nnoremap <F5> :buffers<CR>:buffer<Space>
+
+
 " Press F8 to toggle highlighting on/off, and show current value.
 :noremap <F8> :set hlsearch! hlsearch?<CR>
 
@@ -65,21 +74,26 @@ highlight ShowMarksHLo gui=bold
 highlight ShowMarksHLm gui=bold
 " let g:showmarks_textlower=">>"
 
+nmap <silent> <C-Up> :wincmd k<CR>
+nmap <silent> <C-Down> :wincmd j<CR>
+nmap <silent> <C-Left> :wincmd h<CR>
+nmap <silent> <C-Right> :wincmd l<CR>
 
-" Minibuffer Explorer Settings
-"let g:miniBufExplMapWindowNavVim = 1
-let g:miniBufExplMapWindowNavArrows = 1
-"let g:miniBufExplMapCTabSwitchBufs = 1
-let g:miniBufExplModSelTarget = 1 "force miniBufExpl to try to place selected buffers into a window
-"                                  that does not have a nonmodifiable buffer
+"" Minibuffer Explorer Settings
+""let g:miniBufExplMapWindowNavVim = 1
+"let g:miniBufExplMapWindowNavArrows = 1
+""let g:miniBufExplMapCTabSwitchBufs = 1
+"let g:miniBufExplModSelTarget = 1 "force miniBufExpl to try to place selected buffers into a window
+""                                  that does not have a nonmodifiable buffer
 
 " Kill MBE (minibufferexplorer) just before writing .viminfo; it buggers up the session
-autocmd VimLeavePre * 
-			\ if (bufnr('-MiniBufExplorer-') != -1) |
-			\		execute 'bwipe ' . bufnr("-MiniBufExplorer-") |
-			\ endif 
+"autocmd VimLeavePre * 
+"			\ if (bufnr('-MiniBufExplorer-') != -1) |
+"			\		execute 'bwipe ' . bufnr("-MiniBufExplorer-") |
+"			\ endif 
 " }}}1
-au VimLeavePre * NERDTreeClose
+
+"au VimLeavePre * NERDTreeClose
 
 " alt+n or alt+p to navigate between entries in QuickFix
 "map <silent> <m-p> :cp <cr>
