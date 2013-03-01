@@ -22,6 +22,9 @@ set viminfo^=!
 " Searches word under cursor in the current directory and all subdirectories, opening the quickfix window when done
 map <F4> :execute "vimgrep /" . expand("<cword>") . "/j **" <Bar> cw<CR>
 
+" Filepath of current buffer is copied to system clipboard (register +)
+noremap <silent> <F6> :let @+=expand("%:p")<CR>
+
 
 " Show horizontal scrollbar at startup
 set guioptions+=b
@@ -78,6 +81,7 @@ nmap <silent> <C-Up> :wincmd k<CR>
 nmap <silent> <C-Down> :wincmd j<CR>
 nmap <silent> <C-Left> :wincmd h<CR>
 nmap <silent> <C-Right> :wincmd l<CR>
+
 
 "" Minibuffer Explorer Settings
 ""let g:miniBufExplMapWindowNavVim = 1
