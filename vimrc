@@ -5,13 +5,31 @@ set nowrap  " Line wrapping off
 set cursorline
 set hidden " <<This means that the buffer of the old file will only be hidden when you switch to the new file. When you switch back, you still have your undo history. >>
 
-filetype on  " Automatically detect file types.
-filetype plugin on
+" filetype on  " Automatically detect file types.
+filetype off  " Vundle does not want this turned on
 
 set nocompatible  " We don't want vi compatibility.
 
 let mapleader = ","
 let maplocalleader = ","
+
+
+set rtp+=~/.vim/bundle/vundle/
+call vundle#rc()
+
+" let Vundle manage Vundle
+" required! 
+Bundle 'gmarik/vundle'
+
+
+" My Bundles here:
+"Bundle 'Valloric/YouCompleteMe'
+"" Disabled because it overrides the tab key, which is in use by SnipMate.
+"" At some point, I'll migrate to UltiSnips, which should make it easy to
+"" define a new snippet key (so, not tab)
+
+filetype plugin indent on
+
 
 " Saves current session when you exit
 "au VimLeavePre * if v:this_session != '' | exec "mks! " . v:this_session | endif 
@@ -119,7 +137,8 @@ set ruler  " Ruler on
 set nu  " Line numbers on
 set nowrap  " Line wrapping off
 set timeoutlen=250  " Time to wait after ESC (default causes an annoying delay)
-colorscheme ir_white
+"colorscheme ir_white
+colorscheme php_white
  
 " Formatting (some of these are for coding in C and C++)
 set ts=2  " Tabs are 2 spaces
