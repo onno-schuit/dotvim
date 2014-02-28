@@ -178,10 +178,15 @@ vmap <S-LeftMouse> <Esc><LeftMouse><C-V>
 
 
 map <F10> :NERDTree <CR>
+map <C-F10> :NERDTree <CR>
 map <F11> :NERDTreeClose <CR>
+map <C-F11> :NERDTreeClose <CR>
 let NERDTreeShowBookmarks = 1
 " Change CWD when opening a bookmark
 let NERDTreeChDirMode = 2
+
+" Use <leader> t to quickly find files through the CtrlP plugin
+silent! nnoremap <unique> <silent> <Leader>t :CtrlP<CR>
 
 map <F2> :FufFile <CR>
 
@@ -290,3 +295,40 @@ function! s:CopyMatches(line1, line2, reg)
     echo 'No hits'
   endif
 endfunction
+
+
+if version >= 700 && &term != 'cygwin' && !has('gui_running')
+  " In the color terminal, try to use CSApprox.vim plugin or
+  " guicolorscheme.vim plugin if possible in order to have consistent
+  " colors on different terminals.
+  "
+  " Uncomment one of the following lines to force 256 or 88 colors if
+  " your terminal supports it. Or comment both of them if your terminal
+  " supports neither 256 nor 88 colors. Unfortunately, querying the
+  " number of supported colors does not work on all terminals.
+  set t_Co=256
+  "set t_Co=88
+  if &t_Co == 256 || &t_Co == 88
+    " Check whether to use CSApprox.vim plugin or guicolorscheme.vim plugin.
+    if has('gui') &&
+      \ (filereadable(expand("$HOME/.vim/plugin/CSApprox.vim")) ||
+      \  filereadable(expand("$HOME/vimfiles/plugin/CSApprox.vim")))
+      let s:use_CSApprox = 1
+    elseif filereadable(expand("$HOME/.vim/plugin/guicolorscheme.vim")) ||
+      \    filereadable(expand("$HOME/vimfiles/plugin/guicolorscheme.vim"))
+      let s:use_guicolorscheme = 1
+    endif
+  endif
+endif
+if exists('s:use_CSApprox')
+  " Can use the CSApprox.vim plugin.
+  let g:CSApprox_attr_map = { 'bold' : 'bold', 'italic' : '', 'sp' : '' }
+  colorscheme php_white
+elseif exists('s:use_guicolorscheme')
+  " Can use the guicolorscheme plugin. It needs to be loaded before
+  " running GuiColorScheme (hence the :runtime! command).
+  runtime! plugin/guicolorscheme.vim
+  GuiColorScheme php_white
+else
+  colorscheme php_white
+endif
