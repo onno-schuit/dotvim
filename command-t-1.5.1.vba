@@ -2,8 +2,8 @@
 UseVimball
 finish
 ruby/command-t/controller.rb	[[[1
-357
-# Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+373
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -82,6 +82,18 @@ module CommandT
           ::VIM::command "silent b #{@initial_buffer.number}"
         end
       end
+    end
+
+    # Take current matches and stick them in the quickfix window.
+    def quickfix
+      hide
+
+      matches = @matches.map do |match|
+        "{ 'filename': '#{VIM::escape_for_single_quotes match}' }"
+      end.join(', ')
+
+      ::VIM::command 'call setqflist([' + matches + '])'
+      ::VIM::command 'cope'
     end
 
     def refresh
@@ -180,10 +192,11 @@ module CommandT
       @initial_window   = $curwin
       @initial_buffer   = $curbuf
       @match_window     = MatchWindow.new \
-        :prompt               => @prompt,
+        :highlight_color      => get_string('g:CommandTHighlightColor'),
         :match_window_at_top  => get_bool('g:CommandTMatchWindowAtTop'),
         :match_window_reverse => get_bool('g:CommandTMatchWindowReverse'),
-        :min_height           => min_height
+        :min_height           => min_height,
+        :prompt               => @prompt
       @focus            = @prompt
       @prompt.focus
       register_for_key_presses
@@ -265,6 +278,7 @@ module CommandT
       selection = File.expand_path selection, @path
       selection = relative_path_under_working_directory selection
       selection = sanitize_path_string selection
+      selection = File.join('.', selection) if selection =~ /^\+/
       ensure_appropriate_window_selection
 
       @active_finder.open_selection command, selection, options
@@ -303,6 +317,7 @@ module CommandT
         'CursorRight'           => ['<Right>', '<C-l>'],
         'CursorStart'           => '<C-a>',
         'Delete'                => '<Del>',
+        'Quickfix'              => '<C-q>',
         'Refresh'               => '<C-f>',
         'SelectNext'            => ['<C-n>', '<C-j>', '<Down>'],
         'SelectPrev'            => ['<C-p>', '<C-k>', '<Up>'],
@@ -332,8 +347,8 @@ module CommandT
     end
 
     def list_matches
-      matches = @active_finder.sorted_matches_for @prompt.abbrev, :limit => match_limit
-      @match_window.matches = matches
+      @matches = @active_finder.sorted_matches_for @prompt.abbrev, :limit => match_limit
+      @match_window.matches = @matches
     end
 
     def buffer_finder
@@ -347,7 +362,8 @@ module CommandT
         :max_caches             => get_number('g:CommandTMaxCachedDirectories'),
         :always_show_dot_files  => get_bool('g:CommandTAlwaysShowDotFiles'),
         :never_show_dot_files   => get_bool('g:CommandTNeverShowDotFiles'),
-        :scan_dot_directories   => get_bool('g:CommandTScanDotDirectories')
+        :scan_dot_directories   => get_bool('g:CommandTScanDotDirectories'),
+        :wild_ignore            => get_string('g:CommandTWildIgnore')
     end
 
     def jump_finder
@@ -614,8 +630,8 @@ module CommandT
   end # class Finder
 end # CommandT
 ruby/command-t/match_window.rb	[[[1
-445
-# Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+446
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -651,9 +667,10 @@ module CommandT
     @@buffer          = nil
 
     def initialize options = {}
-      @prompt = options[:prompt]
-      @reverse_list = options[:match_window_reverse]
-      @min_height = options[:min_height]
+      @highlight_color = options[:highlight_color] || 'PmenuSel'
+      @min_height      = options[:min_height]
+      @prompt          = options[:prompt]
+      @reverse_list    = options[:match_window_reverse]
 
       # save existing window dimensions so we can restore them later
       @windows = []
@@ -729,7 +746,7 @@ module CommandT
                          'gui=bold,underline'
         end
 
-        ::VIM::command 'highlight link CommandTSelection Visual'
+        ::VIM::command "highlight link CommandTSelection #{@highlight_color}"
         ::VIM::command 'highlight link CommandTNoEntries Error'
         ::VIM::evaluate 'clearmatches()'
 
@@ -844,7 +861,7 @@ module CommandT
       if @has_focus
         @has_focus = false
         if VIM::has_syntax?
-          ::VIM::command 'highlight link CommandTSelection Visual'
+          ::VIM::command "highlight link CommandTSelection #{@highlight_color}"
         end
       end
     end
@@ -1272,8 +1289,8 @@ module CommandT
   end # class BufferScanner
 end # module CommandT
 ruby/command-t/scanner/file_scanner.rb	[[[1
-101
-# Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
+118
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -1310,9 +1327,11 @@ module CommandT
       @paths_keys           = []
       @path                 = path
       @max_depth            = options[:max_depth] || 15
-      @max_files            = options[:max_files] || 10_000
+      @max_files            = options[:max_files] || 30_000
       @max_caches           = options[:max_caches] || 1
       @scan_dot_directories = options[:scan_dot_directories] || false
+      @wild_ignore          = options[:wild_ignore]
+      @base_wild_ignore     = VIM::wild_ignore
     end
 
     def paths
@@ -1323,8 +1342,11 @@ module CommandT
         @depth        = 0
         @files        = 0
         @prefix_len   = @path.chomp('/').length
+        set_wild_ignore(@wild_ignore)
         add_paths_for_directory @path, @paths[@path]
       rescue FileLimitExceeded
+      ensure
+        set_wild_ignore(@base_wild_ignore)
       end
       @paths[@path]
     end
@@ -1351,6 +1373,17 @@ module CommandT
       ::VIM::evaluate("empty(expand(fnameescape('#{path}')))").to_i == 1
     end
 
+    def looped_symlink? path
+      if File.symlink?(path)
+        target = File.expand_path(File.readlink(path), File.dirname(path))
+        target.include?(@path) || @path.include?(target)
+      end
+    end
+
+    def set_wild_ignore(ignore)
+      ::VIM::command("set wildignore=#{ignore}") if @wild_ignore
+    end
+
     def add_paths_for_directory dir, accumulator
       Dir.foreach(dir) do |entry|
         next if ['.', '..'].include?(entry)
@@ -1363,6 +1396,7 @@ module CommandT
           elsif File.directory?(path)
             next if @depth >= @max_depth
             next if (entry.match(/\A\./) && !@scan_dot_directories)
+            next if looped_symlink?(path)
             @depth += 1
             add_paths_for_directory path, accumulator
             @depth -= 1
@@ -1751,8 +1785,8 @@ module CommandT
   end # module VIM
 end # module CommandT
 ruby/command-t/vim.rb	[[[1
-59
-# Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+63
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -1794,6 +1828,10 @@ module CommandT
 
     def self.pwd
       ::VIM::evaluate 'getcwd()'
+    end
+
+    def self.wild_ignore
+      exists?('&wildignore') && ::VIM::evaluate('&wildignore').to_s
     end
 
     # Execute cmd, capturing the output into a variable and returning it.
@@ -1879,8 +1917,8 @@ void Init_ext()
     rb_define_method(cCommandTMatcher, "matches_for", CommandTMatcher_matches_for, 1);
 }
 ruby/command-t/match.c	[[[1
-189
-// Copyright 2010 Wincent Colaiuta. All rights reserved.
+216
+// Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -1903,66 +1941,79 @@ ruby/command-t/match.c	[[[1
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include "float.h"
 #include "match.h"
 #include "ext.h"
 #include "ruby_compat.h"
 
 // use a struct to make passing params during recursion easier
-typedef struct
-{
-    char    *str_p;                 // pointer to string to be searched
-    long    str_len;                // length of same
-    char    *abbrev_p;              // pointer to search string (abbreviation)
-    long    abbrev_len;             // length of same
+typedef struct {
+    char    *haystack_p;            // pointer to the path string to be searched
+    long    haystack_len;           // length of same
+    char    *needle_p;              // pointer to search string (needle)
+    long    needle_len;             // length of same
     double  max_score_per_char;
     int     dot_file;               // boolean: true if str is a dot-file
     int     always_show_dot_files;  // boolean
     int     never_show_dot_files;   // boolean
+    double  *memo;                  // memoization
 } matchinfo_t;
 
-double recursive_match(matchinfo_t *m,  // sharable meta-data
-                       long str_idx,    // where in the path string to start
-                       long abbrev_idx, // where in the search string to start
-                       long last_idx,   // location of last matched character
-                       double score)    // cumulative score so far
+double recursive_match(matchinfo_t *m,    // sharable meta-data
+                       long haystack_idx, // where in the path string to start
+                       long needle_idx,   // where in the needle string to start
+                       long last_idx,     // location of last matched character
+                       double score)      // cumulative score so far
 {
-    double seen_score = 0;      // remember best score seen via recursion
-    int dot_file_match = 0;     // true if abbrev matches a dot-file
-    int dot_search = 0;         // true if searching for a dot
+    double seen_score = 0;  // remember best score seen via recursion
+    int dot_file_match = 0; // true if needle matches a dot-file
+    int dot_search = 0;     // true if searching for a dot
 
-    for (long i = abbrev_idx; i < m->abbrev_len; i++)
-    {
-        char c = m->abbrev_p[i];
+    // do we have a memoized result we can return?
+    double memoized = m->memo[needle_idx * m->needle_len + haystack_idx];
+    if (memoized != DBL_MAX)
+        return memoized;
+
+    // bail early if not enough room (left) in haystack for (rest of) needle
+    if (m->haystack_len - haystack_idx < m->needle_len - needle_idx) {
+        score = 0.0;
+        goto memoize;
+    }
+
+    for (long i = needle_idx; i < m->needle_len; i++) {
+        char c = m->needle_p[i];
         if (c == '.')
             dot_search = 1;
         int found = 0;
-        for (long j = str_idx; j < m->str_len; j++, str_idx++)
-        {
-            char d = m->str_p[j];
-            if (d == '.')
-            {
-                if (j == 0 || m->str_p[j - 1] == '/')
-                {
+
+        // similar to above, we'll stop iterating when we know we're too close
+        // to the end of the string to possibly match
+        for (long j = haystack_idx;
+             j <= m->haystack_len - (m->needle_len - i);
+             j++, haystack_idx++) {
+            char d = m->haystack_p[j];
+            if (d == '.') {
+                if (j == 0 || m->haystack_p[j - 1] == '/') {
                     m->dot_file = 1;        // this is a dot-file
                     if (dot_search)         // and we are searching for a dot
                         dot_file_match = 1; // so this must be a match
                 }
-            }
-            else if (d >= 'A' && d <= 'Z')
+            } else if (d >= 'A' && d <= 'Z') {
                 d += 'a' - 'A'; // add 32 to downcase
-            if (c == d)
-            {
+            }
+
+            if (c == d) {
                 found = 1;
                 dot_search = 0;
 
                 // calculate score
                 double score_for_char = m->max_score_per_char;
                 long distance = j - last_idx;
-                if (distance > 1)
-                {
+
+                if (distance > 1) {
                     double factor = 1.0;
-                    char last = m->str_p[j - 1];
-                    char curr = m->str_p[j]; // case matters, so get again
+                    char last = m->haystack_p[j - 1];
+                    char curr = m->haystack_p[j]; // case matters, so get again
                     if (last == '/')
                         factor = 0.9;
                     else if (last == '-' ||
@@ -1982,8 +2033,7 @@ double recursive_match(matchinfo_t *m,  // sharable meta-data
                     score_for_char *= factor;
                 }
 
-                if (++j < m->str_len)
-                {
+                if (++j < m->haystack_len) {
                     // bump cursor one char to the right and
                     // use recursion to try and find a better match
                     double sub_score = recursive_match(m, j, i, last_idx, score);
@@ -1992,66 +2042,81 @@ double recursive_match(matchinfo_t *m,  // sharable meta-data
                 }
 
                 score += score_for_char;
-                last_idx = str_idx++;
+                last_idx = haystack_idx + 1;
                 break;
             }
         }
-        if (!found)
-            return 0.0;
+
+        if (!found) {
+            score = 0.0;
+            goto memoize;
+        }
     }
-    if (m->dot_file)
-    {
-        if (m->never_show_dot_files ||
-            (!dot_file_match && !m->always_show_dot_files))
-            return 0.0;
+
+    if (m->dot_file &&
+        (m->never_show_dot_files ||
+         (!dot_file_match && !m->always_show_dot_files))) {
+        score = 0.0;
+        goto memoize;
     }
-    return (score > seen_score) ? score : seen_score;
+    score = score > seen_score ? score : seen_score;
+
+memoize:
+    m->memo[needle_idx * m->needle_len + haystack_idx] = score;
+    return score;
 }
 
-// Match.new abbrev, string, options = {}
+// Match.new needle, string, options = {}
 VALUE CommandTMatch_initialize(int argc, VALUE *argv, VALUE self)
 {
     // process arguments: 2 mandatory, 1 optional
-    VALUE str, abbrev, options;
-    if (rb_scan_args(argc, argv, "21", &str, &abbrev, &options) == 2)
+    VALUE str, needle, options;
+    if (rb_scan_args(argc, argv, "21", &str, &needle, &options) == 2)
         options = Qnil;
-    str             = StringValue(str);
-    abbrev          = StringValue(abbrev); // already downcased by caller
+    str    = StringValue(str);
+    needle = StringValue(needle); // already downcased by caller
 
     // check optional options hash for overrides
     VALUE always_show_dot_files = CommandT_option_from_hash("always_show_dot_files", options);
     VALUE never_show_dot_files = CommandT_option_from_hash("never_show_dot_files", options);
 
     matchinfo_t m;
-    m.str_p                 = RSTRING_PTR(str);
-    m.str_len               = RSTRING_LEN(str);
-    m.abbrev_p              = RSTRING_PTR(abbrev);
-    m.abbrev_len            = RSTRING_LEN(abbrev);
-    m.max_score_per_char    = (1.0 / m.str_len + 1.0 / m.abbrev_len) / 2;
+    m.haystack_p            = RSTRING_PTR(str);
+    m.haystack_len          = RSTRING_LEN(str);
+    m.needle_p              = RSTRING_PTR(needle);
+    m.needle_len            = RSTRING_LEN(needle);
+    m.max_score_per_char    = (1.0 / m.haystack_len + 1.0 / m.needle_len) / 2;
     m.dot_file              = 0;
     m.always_show_dot_files = always_show_dot_files == Qtrue;
     m.never_show_dot_files  = never_show_dot_files == Qtrue;
 
     // calculate score
     double score = 1.0;
-    if (m.abbrev_len == 0) // special case for zero-length search string
-    {
+
+    // special case for zero-length search string
+    if (m.needle_len == 0) {
+
         // filter out dot files
-        if (!m.always_show_dot_files)
-        {
-            for (long i = 0; i < m.str_len; i++)
-            {
-                char c = m.str_p[i];
-                if (c == '.' && (i == 0 || m.str_p[i - 1] == '/'))
-                {
+        if (!m.always_show_dot_files) {
+            for (long i = 0; i < m.haystack_len; i++) {
+                char c = m.haystack_p[i];
+
+                if (c == '.' && (i == 0 || m.haystack_p[i - 1] == '/')) {
                     score = 0.0;
                     break;
                 }
             }
         }
-    }
-    else // normal case
+    } else if (m.haystack_len > 0) { // normal case
+
+        // prepare for memoization
+        double memo[m.haystack_len * m.needle_len];
+        for (long i = 0, max = m.haystack_len * m.needle_len; i < max; i++)
+            memo[i] = DBL_MAX;
+        m.memo = memo;
+
         score = recursive_match(&m, 0, 0, 0, 0.0);
+    }
 
     // clean-up and final book-keeping
     rb_iv_set(self, "@score", rb_float_new(score));
@@ -2070,8 +2135,8 @@ VALUE CommandTMatch_to_s(VALUE self)
     return rb_iv_get(self, "@str");
 }
 ruby/command-t/matcher.c	[[[1
-164
-// Copyright 2010 Wincent Colaiuta. All rights reserved.
+169
+// Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -2105,40 +2170,39 @@ int comp_alpha(const void *a, const void *b)
 {
     VALUE a_val = *(VALUE *)a;
     VALUE b_val = *(VALUE *)b;
-    ID to_s = rb_intern("to_s");
-
+    ID    to_s  = rb_intern("to_s");
     VALUE a_str = rb_funcall(a_val, to_s, 0);
     VALUE b_str = rb_funcall(b_val, to_s, 0);
-    char *a_p = RSTRING_PTR(a_str);
-    long a_len = RSTRING_LEN(a_str);
-    char *b_p = RSTRING_PTR(b_str);
-    long b_len = RSTRING_LEN(b_str);
-    int order = 0;
-    if (a_len > b_len)
-    {
+    char  *a_p  = RSTRING_PTR(a_str);
+    long  a_len = RSTRING_LEN(a_str);
+    char  *b_p  = RSTRING_PTR(b_str);
+    long  b_len = RSTRING_LEN(b_str);
+    int   order = 0;
+
+    if (a_len > b_len) {
         order = strncmp(a_p, b_p, b_len);
         if (order == 0)
             order = 1; // shorter string (b) wins
-    }
-    else if (a_len < b_len)
-    {
+    } else if (a_len < b_len) {
         order = strncmp(a_p, b_p, a_len);
         if (order == 0)
             order = -1; // shorter string (a) wins
-    }
-    else
+    } else {
         order = strncmp(a_p, b_p, a_len);
+    }
+
     return order;
 }
 
 // comparison function for use with qsort
 int comp_score(const void *a, const void *b)
 {
-    VALUE a_val = *(VALUE *)a;
-    VALUE b_val = *(VALUE *)b;
-    ID score = rb_intern("score");
+    VALUE  a_val   = *(VALUE *)a;
+    VALUE  b_val   = *(VALUE *)b;
+    ID     score   = rb_intern("score");
     double a_score = RFLOAT_VALUE(rb_funcall(a_val, score, 0));
     double b_score = RFLOAT_VALUE(rb_funcall(b_val, score, 0));
+
     if (a_score > b_score)
         return -1; // a scores higher, a should appear sooner
     else if (a_score < b_score)
@@ -2151,21 +2215,26 @@ VALUE CommandTMatcher_initialize(int argc, VALUE *argv, VALUE self)
 {
     // process arguments: 1 mandatory, 1 optional
     VALUE scanner, options;
+
     if (rb_scan_args(argc, argv, "11", &scanner, &options) == 1)
         options = Qnil;
     if (NIL_P(scanner))
         rb_raise(rb_eArgError, "nil scanner");
+
     rb_iv_set(self, "@scanner", scanner);
 
     // check optional options hash for overrides
     VALUE always_show_dot_files = CommandT_option_from_hash("always_show_dot_files", options);
     if (always_show_dot_files != Qtrue)
         always_show_dot_files = Qfalse;
+
     VALUE never_show_dot_files = CommandT_option_from_hash("never_show_dot_files", options);
     if (never_show_dot_files != Qtrue)
         never_show_dot_files = Qfalse;
+
     rb_iv_set(self, "@always_show_dot_files", always_show_dot_files);
     rb_iv_set(self, "@never_show_dot_files", never_show_dot_files);
+
     return Qnil;
 }
 
@@ -2192,8 +2261,7 @@ VALUE CommandTMatcher_sorted_matches_for(VALUE self, VALUE abbrev, VALUE options
         limit = RARRAY_LEN(matches);
 
     // will return an array of strings, not an array of Match objects
-    for (long i = 0; i < limit; i++)
-    {
+    for (long i = 0; i < limit; i++) {
         VALUE str = rb_funcall(RARRAY_PTR(matches)[i], rb_intern("to_s"), 0);
         RARRAY_PTR(matches)[i] = str;
     }
@@ -2202,6 +2270,7 @@ VALUE CommandTMatcher_sorted_matches_for(VALUE self, VALUE abbrev, VALUE options
     if (limit < RARRAY_LEN(matches))
         (void)rb_funcall(matches, rb_intern("slice!"), 2, LONG2NUM(limit),
             LONG2NUM(RARRAY_LEN(matches) - limit));
+
     return matches;
 }
 
@@ -2209,30 +2278,31 @@ VALUE CommandTMatcher_matches_for(VALUE self, VALUE abbrev)
 {
     if (NIL_P(abbrev))
         rb_raise(rb_eArgError, "nil abbrev");
+
     VALUE matches = rb_ary_new();
     VALUE scanner = rb_iv_get(self, "@scanner");
     VALUE always_show_dot_files = rb_iv_get(self, "@always_show_dot_files");
     VALUE never_show_dot_files = rb_iv_get(self, "@never_show_dot_files");
     VALUE options = Qnil;
-    if (always_show_dot_files == Qtrue)
-    {
+
+    if (always_show_dot_files == Qtrue) {
         options = rb_hash_new();
         rb_hash_aset(options, ID2SYM(rb_intern("always_show_dot_files")), always_show_dot_files);
-    }
-    else if (never_show_dot_files == Qtrue)
-    {
+    } else if (never_show_dot_files == Qtrue) {
         options = rb_hash_new();
         rb_hash_aset(options, ID2SYM(rb_intern("never_show_dot_files")), never_show_dot_files);
     }
+
     abbrev = rb_funcall(abbrev, rb_intern("downcase"), 0);
     VALUE paths = rb_funcall(scanner, rb_intern("paths"), 0);
-    for (long i = 0, max = RARRAY_LEN(paths); i < max; i++)
-    {
+
+    for (long i = 0, max = RARRAY_LEN(paths); i < max; i++) {
         VALUE path = RARRAY_PTR(paths)[i];
         VALUE match = rb_funcall(cCommandTMatch, rb_intern("new"), 3, path, abbrev, options);
         if (rb_funcall(match, rb_intern("matches?"), 0) == Qtrue)
             rb_funcall(matches, rb_intern("push"), 1, match);
     }
+
     return matches;
 }
 ruby/command-t/ext.h	[[[1
@@ -2414,7 +2484,7 @@ ruby/command-t/depend	[[[1
 
 CFLAGS += -std=c99 -Wall -Wextra -Wno-unused-parameter
 doc/command-t.txt	[[[1
-896
+941
 *command-t.txt* Command-T plug-in for Vim         *command-t*
 
 CONTENTS                                        *command-t-contents*
@@ -2575,7 +2645,7 @@ of the following commands:
 
 Note: Make sure you compile targeting the same architecture Vim was built for.
 For instance, MacVim binaries are built for i386, but sometimes GCC compiles
-for x86_64. First you have to check the platfom Vim was built for:
+for x86_64. First you have to check the platform Vim was built for:
 
   vim --version
   ...
@@ -2623,9 +2693,9 @@ Or you can switch to a specific release with:
 
 After installing or updating you must build the extension:
 
-  cd ~/.vim/bundle/command-t
-  bundle install
-  rake make
+  cd ~/.vim/bundle/command-t/ruby/command-t
+  ruby extconf.rb
+  make
 
 While the Vimball installation automatically generates the help tags, under
 Pathogen it is necessary to do so explicitly from inside Vim:
@@ -2740,6 +2810,7 @@ has focus:
     <C-p>       select previous file in the file listing
     <Up>        select previous file in the file listing
     <C-f>       flush the cache (see |:CommandTFlush| for details)
+    <C-q>       place the current matches in the quickfix window
     <C-c>       cancel (dismisses file listing)
 
 The following is also available on terminals which support it:
@@ -2837,7 +2908,7 @@ changes via |:let|.
 Following is a list of all available options:
 
                                                *g:CommandTMaxFiles*
-  |g:CommandTMaxFiles|                           number (default 10000)
+  |g:CommandTMaxFiles|                           number (default 30000)
 
       The maximum number of files that will be considered when scanning the
       current directory. Upon reaching this number scanning stops. This
@@ -2852,7 +2923,7 @@ Following is a list of all available options:
       skipped.
 
                                                *g:CommandTMaxCachedDirectories*
-  |g:CommandTMaxCachedDirectories|                           number (default 1)
+  |g:CommandTMaxCachedDirectories|               number (default 1)
 
       The maximum number of directories whose contents should be cached when
       recursively scanning. With the default value of 1, each time you change
@@ -2945,6 +3016,23 @@ Following is a list of all available options:
       When this setting is off (the default) the matches in the |:CommandTTag|
       listing do not include filenames.
 
+                                                *g:CommandTHighlightColor*
+  |g:CommandTHighlightColor|                      string (default: 'PmenuSel')
+
+      Specifies the highlight color that will be used to show the currently
+      selected item in the match listing window.
+
+                                                *g:CommandTWildIgnore*
+  |g:CommandTWildIgnore|                          string (default: none)
+
+      Optionally override Vim's global |'wildignore'| setting during Command-T
+      seaches. If you wish to supplement rather than replace the global
+      setting, you can use a syntax like:
+
+        let g:CommandTWildIgnore=&wildignore . ",**/bower_components/*"
+
+      See also |command-t-wildignore|.
+
 As well as the basic options listed above, there are a number of settings that
 can be used to override the default key mappings used by Command-T. For
 example, to set <C-x> as the mapping for cancelling (dismissing) the Command-T
@@ -3002,6 +3090,9 @@ Following is a list of all map settings and their defaults:
                                       *g:CommandTRefreshMap*
                 |g:CommandTRefreshMap|  <C-f>
 
+                                      *g:CommandTQuickfixMap*
+               |g:CommandTQuickfixMap|  <C-q>
+
                                       *g:CommandTCursorLeftMap*
              |g:CommandTCursorLeftMap|  <Left>
                                       <C-h>
@@ -3036,6 +3127,11 @@ settings can be used to control behavior:
 
       See the |'wildignore'| documentation for more information.
 
+      If you want to influence Command-T's file exclusion behavior without
+      changing your global |'wildignore'| setting, you can use the
+      |g:CommandTWildIgnore| setting to apply an override that takes effect
+      only during Command-T searches.
+
 
 AUTHORS                                         *command-t-authors*
 
@@ -3043,14 +3139,16 @@ Command-T is written and maintained by Wincent Colaiuta <win@wincent.com>.
 Other contributors that have submitted patches include (in alphabetical
 order):
 
-  Anthony Panozzo           Mike Lundy                Steven Moazami
-  Daniel Hahler             Nate Kane                 Sung Pae
-  Felix Tjandrawibawa       Nicholas Alpi             Thomas Pelletier
-  Gary Bernhardt            Nadav Samet               Victor Hugo Borja
-  Jeff Kreeftmeijer         Noon Silk                 Woody Peterson
-  Lucas de Vries            Rainux Luo                Yan Pritzker
-  Marian Schubert           Scott Bronson             Zak Johnson
-  Matthew Todd              Seth Fowler
+  Anthony Panozzo           Mike Lundy                Sung Pae
+  Daniel Hahler             Nate Kane                 Thomas Pelletier
+  Felix Tjandrawibawa       Nicholas Alpi             Victor Hugo Borja
+  Gary Bernhardt            Nadav Samet               Vít Ondruch
+  Ivan Ukhov                Noon Silk                 Woody Peterson
+  Jeff Kreeftmeijer         Paul Jolly                Yan Pritzker
+  Lucas de Vries            Rainux Luo                Zak Johnson
+  Marcus Brito              Scott Bronson
+  Marian Schubert           Seth Fowler
+  Matthew Todd              Steven Moazami
 
 As this was the first Vim plug-in I had ever written I was heavily influenced
 by the design of the LustyExplorer plug-in by Stephen Bach, which I understand
@@ -3128,7 +3226,7 @@ PayPal to win@wincent.com:
 
 LICENSE                                         *command-t-license*
 
-Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -3152,6 +3250,23 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
 HISTORY                                         *command-t-history*
+
+1.5.1 (23 September 2013)
+- exclude large benchmark fixture file from source exports (patch from Vít
+  Ondruch)
+
+1.5 (18 September 2013)
+- don't scan "pathological" filesystem structures (ie. circular or
+  self-referential symlinks; patch from Marcus Brito)
+- gracefully handle files starting with "+" (patch from Ivan Ukhov)
+- switch default selection highlight color for better readability (suggestion
+  from André Arko), but make it possible to configure via the
+  |g:CommandTHighlightColor| setting
+- added a mapping to take the current matches and put then in the quickfix
+  window
+- performance improvements, particularly noticeable with large file
+  hierarchies
+- added |g:CommandTWildIgnore| setting (patch from Paul Jolly)
 
 1.4 (20 June 2012)
 
@@ -3312,9 +3427,9 @@ HISTORY                                         *command-t-history*
 ------------------------------------------------------------------------------
 vim:tw=78:ft=help:
 plugin/command-t.vim	[[[1
-186
+190
 " command-t.vim
-" Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+" Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 "
 " Redistribution and use in source and binary forms, with or without
 " modification, are permitted provided that the following conditions are met:
@@ -3433,6 +3548,10 @@ endfunction
 
 function CommandTAcceptSelectionVSplit()
   ruby $command_t.accept_selection :command => 'vs'
+endfunction
+
+function CommandTQuickfix()
+  ruby $command_t.quickfix
 endfunction
 
 function CommandTRefresh()

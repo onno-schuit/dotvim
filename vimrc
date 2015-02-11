@@ -5,13 +5,31 @@ set nowrap  " Line wrapping off
 set cursorline
 set hidden " <<This means that the buffer of the old file will only be hidden when you switch to the new file. When you switch back, you still have your undo history. >>
 
-filetype on  " Automatically detect file types.
-filetype plugin on
+" filetype on  " Automatically detect file types.
+filetype off  " Vundle does not want this turned on
 
 set nocompatible  " We don't want vi compatibility.
 
 let mapleader = ","
 let maplocalleader = ","
+
+
+set rtp+=~/.vim/bundle/vundle/
+call vundle#rc()
+
+" let Vundle manage Vundle
+" required! 
+Bundle 'gmarik/vundle'
+
+
+" My Bundles here:
+"Bundle 'Valloric/YouCompleteMe'
+"" Disabled because it overrides the tab key, which is in use by SnipMate.
+"" At some point, I'll migrate to UltiSnips, which should make it easy to
+"" define a new snippet key (so, not tab)
+
+filetype plugin indent on
+
 
 " Saves current session when you exit
 "au VimLeavePre * if v:this_session != '' | exec "mks! " . v:this_session | endif 
@@ -119,6 +137,9 @@ set ruler  " Ruler on
 set nu  " Line numbers on
 set nowrap  " Line wrapping off
 set timeoutlen=250  " Time to wait after ESC (default causes an annoying delay)
+"colorscheme ir_white
+
+set background=light
 colorscheme ir_white
  
 " Formatting (some of these are for coding in C and C++)
@@ -271,3 +292,40 @@ function! s:CopyMatches(line1, line2, reg)
     echo 'No hits'
   endif
 endfunction
+
+
+if version >= 700 && &term != 'cygwin' && !has('gui_running')
+  " In the color terminal, try to use CSApprox.vim plugin or
+  " guicolorscheme.vim plugin if possible in order to have consistent
+  " colors on different terminals.
+  "
+  " Uncomment one of the following lines to force 256 or 88 colors if
+  " your terminal supports it. Or comment both of them if your terminal
+  " supports neither 256 nor 88 colors. Unfortunately, querying the
+  " number of supported colors does not work on all terminals.
+  set t_Co=256
+  "set t_Co=88
+  if &t_Co == 256 || &t_Co == 88
+    " Check whether to use CSApprox.vim plugin or guicolorscheme.vim plugin.
+    if has('gui') &&
+      \ (filereadable(expand("$HOME/.vim/plugin/CSApprox.vim")) ||
+      \  filereadable(expand("$HOME/vimfiles/plugin/CSApprox.vim")))
+      let s:use_CSApprox = 1
+    elseif filereadable(expand("$HOME/.vim/plugin/guicolorscheme.vim")) ||
+      \    filereadable(expand("$HOME/vimfiles/plugin/guicolorscheme.vim"))
+      let s:use_guicolorscheme = 1
+    endif
+  endif
+endif
+if exists('s:use_CSApprox')
+  " Can use the CSApprox.vim plugin.
+  let g:CSApprox_attr_map = { 'bold' : 'bold', 'italic' : '', 'sp' : '' }
+  colorscheme ir_white
+elseif exists('s:use_guicolorscheme')
+  " Can use the guicolorscheme plugin. It needs to be loaded before
+  " running GuiColorScheme (hence the :runtime! command).
+  runtime! plugin/guicolorscheme.vim
+  GuiColorScheme ir_white
+else
+  colorscheme ir_white
+endif
