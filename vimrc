@@ -138,9 +138,13 @@ set nu  " Line numbers on
 set nowrap  " Line wrapping off
 set timeoutlen=250  " Time to wait after ESC (default causes an annoying delay)
 "colorscheme ir_white
+<<<<<<< HEAD
 
 set background=light
 colorscheme ir_white
+=======
+colorscheme php_white
+>>>>>>> 4ed8343dd9aa91e74c013ddd3cc0512ef920f2f8
  
 " Formatting (some of these are for coding in C and C++)
 set ts=2  " Tabs are 2 spaces
@@ -180,10 +184,15 @@ vmap <S-LeftMouse> <Esc><LeftMouse><C-V>
 
 
 map <F10> :NERDTree <CR>
+map <C-F10> :NERDTree <CR>
 map <F11> :NERDTreeClose <CR>
+map <C-F11> :NERDTreeClose <CR>
 let NERDTreeShowBookmarks = 1
 " Change CWD when opening a bookmark
 let NERDTreeChDirMode = 2
+
+" Use <leader> t to quickly find files through the CtrlP plugin
+silent! nnoremap <unique> <silent> <Leader>t :CtrlP<CR>
 
 map <F2> :FufFile <CR>
 
@@ -320,12 +329,22 @@ endif
 if exists('s:use_CSApprox')
   " Can use the CSApprox.vim plugin.
   let g:CSApprox_attr_map = { 'bold' : 'bold', 'italic' : '', 'sp' : '' }
+<<<<<<< HEAD
   colorscheme ir_white
+=======
+  colorscheme php_white
+>>>>>>> 4ed8343dd9aa91e74c013ddd3cc0512ef920f2f8
 elseif exists('s:use_guicolorscheme')
   " Can use the guicolorscheme plugin. It needs to be loaded before
   " running GuiColorScheme (hence the :runtime! command).
   runtime! plugin/guicolorscheme.vim
+<<<<<<< HEAD
   GuiColorScheme ir_white
 else
   colorscheme ir_white
+=======
+  GuiColorScheme php_white
+else
+  colorscheme php_white
+>>>>>>> 4ed8343dd9aa91e74c013ddd3cc0512ef920f2f8
 endif

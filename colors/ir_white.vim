@@ -39,8 +39,6 @@
 "  line number: #3D3D3D  61:61:61
 
 
-
-
 " ********************************************************************************
 " The following are the preferred 16 colors for your terminal
 "           Colors      Bright Colors
@@ -77,8 +75,8 @@ hi LineNr           guifg=#3D3D3D     guibg=white       gui=NONE      ctermfg=da
 hi VertSplit        guifg=#202020     guibg=#202020     gui=NONE      ctermfg=darkgray    ctermbg=darkgray    cterm=NONE
 hi StatusLine       guifg=#CCCCCC     guibg=#202020     gui=italic    ctermfg=black       ctermbg=darkgray    cterm=NONE
 hi StatusLineNC     guifg=white       guibg=#202020     gui=NONE      ctermfg=blue        ctermbg=darkgray    cterm=NONE  
-
 hi Folded           guifg=#a0a8b0     guibg=#384048     gui=NONE      ctermfg=NONE        ctermbg=NONE        cterm=NONE
+
 " NERDTree uses Title for styling file names, and treeDir for directories' color
 hi Title            guifg=black       guibg=NONE        gui=NONE      ctermfg=NONE        ctermbg=NONE        cterm=NONE
 hi treeDir          guifg=#729FCF     guibg=white       gui=bold
@@ -152,6 +150,9 @@ hi link SpecialChar     Special
 hi link SpecialComment  Special
 hi link Debug           Special
 
+"Invisible character colors
+highlight NonText guifg=#CCCCCC     guibg=white
+highlight SpecialKey guifg=#CCCCCC  guibg=white
 
 " Special for Ruby
 hi rubyRegexp                  guifg=#B18A3D      guibg=NONE      gui=NONE      ctermfg=brown          ctermbg=NONE      cterm=NONE
@@ -183,6 +184,52 @@ hi link rubyIdentifier        Identifier
 hi link rubyGlobalVariable    Identifier
 hi link rubyClassVariable     Identifier
 hi link rubyConstant          Type  
+
+
+" Special for PHP
+
+hi link phpConstant  Constant
+hi link phpCoreConstant  Constant
+hi link phpComment Comment
+hi link phpException Exception
+hi link phpBoolean Boolean
+hi link phpStorageClass  StorageClass
+hi link phpSCKeyword StorageClass
+hi link phpFCKeyword Define
+hi link phpStructure Keyword
+hi link phpStringSingle  String
+hi link phpStringDouble  String
+hi link phpBacktick  String
+hi link phpNumber  Number
+hi link phpFloat Float
+hi link phpMethods Function
+hi link phpFunctions Function
+hi link phpBaselib Function
+hi link phpRepeat  Repeat
+hi link phpConditional Conditional
+hi link phpLabel Label
+hi link phpStatement Statement
+hi link phpKeyword Statement
+hi link phpType  Type
+hi link phpInclude Include
+hi link phpDefine  Define
+hi link phpSpecialChar SpecialChar
+"hi link phpParent  Delimiter
+"hi link phpIdentifierConst Delimiter
+hi link phpParentError Error
+hi link phpOctalError  Error
+hi link phpTodo  Todo
+hi link phpMemberSelector  Structure
+
+
+hi link phpIntVar Boolean
+hi link phpEnvVar Boolean
+hi link phpOperator Operator
+hi phpVarSelector          guifg=#855500     guibg=NONE        gui=bold      ctermfg=blue        ctermbg=NONE        cterm=NONE
+hi link phpRelation Operator
+hi link phpIdentifier Identifier
+hi link phpIdentifierSimply Identifier
+
 
 
 

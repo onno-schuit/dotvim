@@ -1,4 +1,4 @@
-colorscheme php_white
+"colorscheme php_white
 set tabstop=4
 set shiftwidth=4
 set expandtab
