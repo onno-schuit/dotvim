@@ -2,8 +2,8 @@
 UseVimball
 finish
 ruby/command-t/controller.rb	[[[1
-307
-# Copyright 2010 Wincent Colaiuta. All rights reserved.
+373
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -26,31 +26,46 @@ ruby/command-t/controller.rb	[[[1
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-require 'command-t/finder'
+require 'command-t/finder/buffer_finder'
+require 'command-t/finder/jump_finder'
+require 'command-t/finder/file_finder'
+require 'command-t/finder/tag_finder'
 require 'command-t/match_window'
 require 'command-t/prompt'
+require 'command-t/vim/path_utilities'
 
 module CommandT
   class Controller
+    include VIM::PathUtilities
+
     def initialize
       @prompt = Prompt.new
-      set_up_max_height
-      set_up_finder
     end
 
-    def show
+    def show_buffer_finder
+      @path          = VIM::pwd
+      @active_finder = buffer_finder
+      show
+    end
+
+    def show_jump_finder
+      @path          = VIM::pwd
+      @active_finder = jump_finder
+      show
+    end
+
+    def show_tag_finder
+      @path          = VIM::pwd
+      @active_finder = tag_finder
+      show
+    end
+
+    def show_file_finder
       # optional parameter will be desired starting directory, or ""
-      @path           = File.expand_path(::VIM::evaluate('a:arg'), VIM::pwd)
-      @finder.path    = @path
-      @initial_window = $curwin
-      @initial_buffer = $curbuf
-      @match_window   = MatchWindow.new \
-        :prompt               => @prompt,
-        :match_window_at_top  => get_bool('g:CommandTMatchWindowAtTop')
-      @focus          = @prompt
-      @prompt.focus
-      register_for_key_presses
-      clear # clears prompt and lists matches
+      @path             = File.expand_path(::VIM::evaluate('a:arg'), VIM::pwd)
+      @active_finder    = file_finder
+      file_finder.path  = @path
+      show
     rescue Errno::ENOENT
       # probably a problem with the optional parameter
       @match_window.print_no_such_file_or_directory
@@ -69,9 +84,29 @@ module CommandT
       end
     end
 
+    # Take current matches and stick them in the quickfix window.
+    def quickfix
+      hide
+
+      matches = @matches.map do |match|
+        "{ 'filename': '#{VIM::escape_for_single_quotes match}' }"
+      end.join(', ')
+
+      ::VIM::command 'call setqflist([' + matches + '])'
+      ::VIM::command 'cope'
+    end
+
+    def refresh
+      return unless @active_finder && @active_finder.respond_to?(:flush)
+      @active_finder.flush
+      list_matches
+    end
+
     def flush
-      set_up_max_height
-      set_up_finder
+      @max_height   = nil
+      @min_height   = nil
+      @file_finder  = nil
+      @tag_finder   = nil
     end
 
     def handle_key
@@ -153,51 +188,54 @@ module CommandT
 
   private
 
-    def set_up_max_height
-      @max_height = get_number('g:CommandTMaxHeight') || 0
+    def show
+      @initial_window   = $curwin
+      @initial_buffer   = $curbuf
+      @match_window     = MatchWindow.new \
+        :highlight_color      => get_string('g:CommandTHighlightColor'),
+        :match_window_at_top  => get_bool('g:CommandTMatchWindowAtTop'),
+        :match_window_reverse => get_bool('g:CommandTMatchWindowReverse'),
+        :min_height           => min_height,
+        :prompt               => @prompt
+      @focus            = @prompt
+      @prompt.focus
+      register_for_key_presses
+      clear # clears prompt and lists matches
     end
 
-    def set_up_finder
-      @finder = CommandT::Finder.new nil,
-        :max_files              => get_number('g:CommandTMaxFiles'),
-        :max_depth              => get_number('g:CommandTMaxDepth'),
-        :always_show_dot_files  => get_bool('g:CommandTAlwaysShowDotFiles'),
-        :never_show_dot_files   => get_bool('g:CommandTNeverShowDotFiles'),
-        :scan_dot_directories   => get_bool('g:CommandTScanDotDirectories')
+    def max_height
+      @max_height ||= get_number('g:CommandTMaxHeight') || 0
     end
 
-    def exists? name
-      ::VIM::evaluate("exists(\"#{name}\")").to_i != 0
+    def min_height
+      @min_height ||= begin
+        min_height = get_number('g:CommandTMinHeight') || 0
+        min_height = max_height if max_height != 0 && min_height > max_height
+        min_height
+      end
     end
 
     def get_number name
-      exists?(name) ? ::VIM::evaluate("#{name}").to_i : nil
+      VIM::exists?(name) ? ::VIM::evaluate("#{name}").to_i : nil
     end
 
     def get_bool name
-      exists?(name) ? ::VIM::evaluate("#{name}").to_i != 0 : nil
+      VIM::exists?(name) ? ::VIM::evaluate("#{name}").to_i != 0 : nil
     end
 
     def get_string name
-      exists?(name) ? ::VIM::evaluate("#{name}").to_s : nil
+      VIM::exists?(name) ? ::VIM::evaluate("#{name}").to_s : nil
     end
 
     # expect a string or a list of strings
     def get_list_or_string name
-      return nil unless exists?(name)
+      return nil unless VIM::exists?(name)
       list_or_string = ::VIM::evaluate("#{name}")
       if list_or_string.kind_of?(Array)
         list_or_string.map { |item| item.to_s }
       else
         list_or_string.to_s
       end
-    end
-
-    def relative_path_under_working_directory path
-      # any path under the working directory will be specified as a relative
-      # path to improve the readability of the buffer list etc
-      pwd = File.expand_path(VIM::pwd) + '/'
-      path.index(pwd) == 0 ? path[pwd.length..-1] : path
     end
 
     # Backslash-escape space, \, |, %, #, "
@@ -240,8 +278,10 @@ module CommandT
       selection = File.expand_path selection, @path
       selection = relative_path_under_working_directory selection
       selection = sanitize_path_string selection
+      selection = File.join('.', selection) if selection =~ /^\+/
       ensure_appropriate_window_selection
-      ::VIM::command "silent #{command} #{selection}"
+
+      @active_finder.open_selection command, selection, options
     end
 
     def map key, function, param = nil
@@ -249,12 +289,8 @@ module CommandT
         ":call CommandT#{function}(#{param})<CR>"
     end
 
-    def xterm?
-      !!(::VIM::evaluate('&term') =~ /\Axterm/)
-    end
-
-    def vt100?
-      !!(::VIM::evaluate('&term') =~ /\Avt100/)
+    def term
+      @term ||= ::VIM::evaluate('&term')
     end
 
     def register_for_key_presses
@@ -268,28 +304,34 @@ module CommandT
       end
 
       # "special" keys (overridable by settings)
-      { 'Backspace'             => '<BS>',
-        'Delete'                => '<Del>',
+      {
         'AcceptSelection'       => '<CR>',
         'AcceptSelectionSplit'  => ['<C-CR>', '<C-s>'],
         'AcceptSelectionTab'    => '<C-t>',
         'AcceptSelectionVSplit' => '<C-v>',
-        'ToggleFocus'           => '<Tab>',
+        'Backspace'             => '<BS>',
         'Cancel'                => ['<C-c>', '<Esc>'],
-        'SelectNext'            => ['<C-n>', '<C-j>', '<Down>'],
-        'SelectPrev'            => ['<C-p>', '<C-k>', '<Up>'],
         'Clear'                 => '<C-u>',
+        'CursorEnd'             => '<C-e>',
         'CursorLeft'            => ['<Left>', '<C-h>'],
         'CursorRight'           => ['<Right>', '<C-l>'],
-        'CursorEnd'             => '<C-e>',
-        'CursorStart'           => '<C-a>' }.each do |key, value|
+        'CursorStart'           => '<C-a>',
+        'Delete'                => '<Del>',
+        'Quickfix'              => '<C-q>',
+        'Refresh'               => '<C-f>',
+        'SelectNext'            => ['<C-n>', '<C-j>', '<Down>'],
+        'SelectPrev'            => ['<C-p>', '<C-k>', '<Up>'],
+        'ToggleFocus'           => '<Tab>',
+      }.each do |key, value|
         if override = get_list_or_string("g:CommandT#{key}Map")
-          [override].flatten.each do |mapping|
+          Array(override).each do |mapping|
             map mapping, key
           end
         else
-          [value].flatten.each do |mapping|
-            map mapping, key unless mapping == '<Esc>' && (xterm? || vt100?)
+          Array(value).each do |mapping|
+            unless mapping == '<Esc>' && term =~ /\A(screen|xterm|vt100)/
+              map mapping, key
+            end
           end
         end
       end
@@ -300,18 +342,42 @@ module CommandT
     def match_limit
       limit = VIM::Screen.lines - 5
       limit = 1 if limit < 0
-      limit = [limit, @max_height].min if @max_height > 0
+      limit = [limit, max_height].min if max_height > 0
       limit
     end
 
     def list_matches
-      matches = @finder.sorted_matches_for @prompt.abbrev, :limit => match_limit
-      @match_window.matches = matches
+      @matches = @active_finder.sorted_matches_for @prompt.abbrev, :limit => match_limit
+      @match_window.matches = @matches
+    end
+
+    def buffer_finder
+      @buffer_finder ||= CommandT::BufferFinder.new
+    end
+
+    def file_finder
+      @file_finder ||= CommandT::FileFinder.new nil,
+        :max_depth              => get_number('g:CommandTMaxDepth'),
+        :max_files              => get_number('g:CommandTMaxFiles'),
+        :max_caches             => get_number('g:CommandTMaxCachedDirectories'),
+        :always_show_dot_files  => get_bool('g:CommandTAlwaysShowDotFiles'),
+        :never_show_dot_files   => get_bool('g:CommandTNeverShowDotFiles'),
+        :scan_dot_directories   => get_bool('g:CommandTScanDotDirectories'),
+        :wild_ignore            => get_string('g:CommandTWildIgnore')
+    end
+
+    def jump_finder
+      @jump_finder ||= CommandT::JumpFinder.new
+    end
+
+    def tag_finder
+      @tag_finder ||= CommandT::TagFinder.new \
+        :include_filenames => get_bool('g:CommandTTagIncludeFilenames')
     end
   end # class Controller
 end # module commandT
 ruby/command-t/extconf.rb	[[[1
-32
+34
 # Copyright 2010 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -342,11 +408,13 @@ def missing item
   exit 1
 end
 
+RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
+
 have_header('ruby.h') or missing('ruby.h')
 create_makefile('ext')
-ruby/command-t/finder.rb	[[[1
-51
-# Copyright 2010 Wincent Colaiuta. All rights reserved.
+ruby/command-t/finder/buffer_finder.rb	[[[1
+35
+# Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -370,16 +438,180 @@ ruby/command-t/finder.rb	[[[1
 # POSSIBILITY OF SUCH DAMAGE.
 
 require 'command-t/ext' # CommandT::Matcher
-require 'command-t/scanner'
+require 'command-t/scanner/buffer_scanner'
+require 'command-t/finder'
+
+module CommandT
+  class BufferFinder < Finder
+    def initialize
+      @scanner = BufferScanner.new
+      @matcher = Matcher.new @scanner, :always_show_dot_files => true
+    end
+  end # class BufferFinder
+end # CommandT
+ruby/command-t/finder/file_finder.rb	[[[1
+39
+# Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/ext' # CommandT::Matcher
+require 'command-t/finder'
+require 'command-t/scanner/file_scanner'
+
+module CommandT
+  class FileFinder < Finder
+    def initialize path = Dir.pwd, options = {}
+      @scanner = FileScanner.new path, options
+      @matcher = Matcher.new @scanner, options
+    end
+
+    def flush
+      @scanner.flush
+    end
+  end # class FileFinder
+end # CommandT
+ruby/command-t/finder/jump_finder.rb	[[[1
+35
+# Copyright 2011 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/ext' # CommandT::Matcher
+require 'command-t/scanner/jump_scanner'
+require 'command-t/finder'
+
+module CommandT
+  class JumpFinder < Finder
+    def initialize
+      @scanner = JumpScanner.new
+      @matcher = Matcher.new @scanner, :always_show_dot_files => true
+    end
+  end # class JumpFinder
+end # module CommandT
+ruby/command-t/finder/tag_finder.rb	[[[1
+44
+# Copyright 2011-2012 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/ext' # CommandT::Matcher
+require 'command-t/scanner/tag_scanner'
+require 'command-t/finder'
+
+module CommandT
+  class TagFinder < Finder
+    def initialize options = {}
+      @scanner = TagScanner.new options
+      @matcher = Matcher.new @scanner, :always_show_dot_files => true
+    end
+
+    def open_selection command, selection, options = {}
+      if @scanner.include_filenames
+        selection = selection[0, selection.index(':')]
+      end
+
+      #  open the tag and center the screen on it
+      ::VIM::command "silent! tag #{selection} | :normal zz"
+    end
+  end # class TagFinder
+end # module CommandT
+ruby/command-t/finder.rb	[[[1
+54
+# Copyright 2010-2012 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/ext' # CommandT::Matcher
 
 module CommandT
   # Encapsulates a Scanner instance (which builds up a list of available files
   # in a directory) and a Matcher instance (which selects from that list based
   # on a search string).
+  #
+  # Specialized subclasses use different kinds of scanners adapted for
+  # different kinds of search (files, buffers).
   class Finder
+    include VIM::PathUtilities
+
     def initialize path = Dir.pwd, options = {}
-      @scanner = Scanner.new path, options
-      @matcher = Matcher.new @scanner, options
+      raise RuntimeError, 'Subclass responsibility'
     end
 
     # Options:
@@ -388,8 +620,8 @@ module CommandT
       @matcher.sorted_matches_for str, options
     end
 
-    def flush
-      @scanner.flush
+    def open_selection command, selection, options = {}
+      ::VIM::command "silent #{command} #{selection}"
     end
 
     def path= path
@@ -398,8 +630,8 @@ module CommandT
   end # class Finder
 end # CommandT
 ruby/command-t/match_window.rb	[[[1
-375
-# Copyright 2010 Wincent Colaiuta. All rights reserved.
+446
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -427,19 +659,25 @@ require 'command-t/settings'
 
 module CommandT
   class MatchWindow
-    @@selection_marker  = '> '
-    @@marker_length     = @@selection_marker.length
-    @@unselected_marker = ' ' * @@marker_length
-    @@buffer            = nil
+    SELECTION_MARKER  = '> '
+    MARKER_LENGTH     = SELECTION_MARKER.length
+    UNSELECTED_MARKER = ' ' * MARKER_LENGTH
+    MH_START          = '<commandt>'
+    MH_END            = '</commandt>'
+    @@buffer          = nil
 
     def initialize options = {}
-      @prompt = options[:prompt]
+      @highlight_color = options[:highlight_color] || 'PmenuSel'
+      @min_height      = options[:min_height]
+      @prompt          = options[:prompt]
+      @reverse_list    = options[:match_window_reverse]
 
       # save existing window dimensions so we can restore them later
       @windows = []
       (0..(::VIM::Window.count - 1)).each do |i|
-        window = OpenStruct.new :index => i, :height => ::VIM::Window[i].height
-        @windows << window
+        @windows << OpenStruct.new(:index   => i,
+                                   :height  => ::VIM::Window[i].height,
+                                   :width   => ::VIM::Window[i].width)
       end
 
       # global settings (must manually save and restore)
@@ -479,6 +717,12 @@ module CommandT
           'setlocal textwidth=0'        # don't hard-wrap (break long lines)
         ].each { |command| ::VIM::command command }
 
+        # don't show the color column
+        ::VIM::command 'setlocal colorcolumn=0' if VIM::exists?('+colorcolumn')
+
+        # don't show relative line numbers
+        ::VIM::command 'setlocal norelativenumber' if VIM::exists?('+relativenumber')
+
         # sanity check: make sure the buffer really was created
         raise "Can't find GoToFile buffer" unless $curbuf.name.match /GoToFile\z/
         @@buffer = $curbuf
@@ -486,10 +730,23 @@ module CommandT
 
       # syntax coloring
       if VIM::has_syntax?
-        ::VIM::command "syntax match CommandTSelection \"^#{@@selection_marker}.\\+$\""
+        ::VIM::command "syntax match CommandTSelection \"^#{SELECTION_MARKER}.\\+$\""
         ::VIM::command 'syntax match CommandTNoEntries "^-- NO MATCHES --$"'
         ::VIM::command 'syntax match CommandTNoEntries "^-- NO SUCH FILE OR DIRECTORY --$"'
-        ::VIM::command 'highlight link CommandTSelection Visual'
+        ::VIM::command 'setlocal synmaxcol=9999'
+
+        if VIM::has_conceal?
+          ::VIM::command 'setlocal conceallevel=2'
+          ::VIM::command 'setlocal concealcursor=nvic'
+          ::VIM::command 'syntax region CommandTCharMatched ' \
+                         "matchgroup=CommandTCharMatched start=+#{MH_START}+ " \
+                         "matchgroup=CommandTCharMatchedEnd end=+#{MH_END}+ concealends"
+          ::VIM::command 'highlight def CommandTCharMatched ' \
+                         'term=bold,underline cterm=bold,underline ' \
+                         'gui=bold,underline'
+        end
+
+        ::VIM::command "highlight link CommandTSelection #{@highlight_color}"
         ::VIM::command 'highlight link CommandTNoEntries Error'
         ::VIM::evaluate 'clearmatches()'
 
@@ -502,8 +759,8 @@ module CommandT
       # by some unexpected means of dismissing or leaving the Command-T window
       # (eg. <C-W q>, <C-W k> etc)
       ::VIM::command 'autocmd! * <buffer>'
-      ::VIM::command 'autocmd BufLeave <buffer> ruby $command_t.leave'
-      ::VIM::command 'autocmd BufUnload <buffer> ruby $command_t.unload'
+      ::VIM::command 'autocmd BufLeave <buffer> silent! ruby $command_t.leave'
+      ::VIM::command 'autocmd BufUnload <buffer> silent! ruby $command_t.unload'
 
       @has_focus  = false
       @selection  = nil
@@ -512,6 +769,16 @@ module CommandT
     end
 
     def close
+      # Unlisted buffers like those provided by Netrw, NERDTree and Vim's help
+      # don't actually appear in the buffer list; if they are the only such
+      # buffers present when Command-T is invoked (for example, when invoked
+      # immediately after starting Vim with a directory argument, like `vim .`)
+      # then performing the normal clean-up will yield an "E90: Cannot unload
+      # last buffer" error. We can work around that by doing a :quit first.
+      if ::VIM::Buffer.count == 0
+        ::VIM::command 'silent quit'
+      end
+
       # Workaround for upstream bug in Vim 7.3 on some platforms
       #
       # On some platforms, $curbuf.number always returns 0. One workaround is
@@ -522,10 +789,10 @@ module CommandT
       # For more details, see: https://wincent.com/issues/1617
       if $curbuf.number == 0
         # use bwipeout as bunload fails if passed the name of a hidden buffer
-        ::VIM::command 'bwipeout! GoToFile'
+        ::VIM::command 'silent! bwipeout! GoToFile'
         @@buffer = nil
       else
-        ::VIM::command "bunload! #{@@buffer.number}"
+        ::VIM::command "silent! bunload! #{@@buffer.number}"
       end
     end
 
@@ -554,6 +821,7 @@ module CommandT
         @selection += 1
         print_match(@selection - 1) # redraw old selection (removes marker)
         print_match(@selection)     # redraw new selection (adds marker)
+        move_cursor_to_selected_line
       else
         # (possibly) loop or scroll
       end
@@ -564,16 +832,19 @@ module CommandT
         @selection -= 1
         print_match(@selection + 1) # redraw old selection (removes marker)
         print_match(@selection)     # redraw new selection (adds marker)
+        move_cursor_to_selected_line
       else
         # (possibly) loop or scroll
       end
     end
 
     def matches= matches
+      matches = matches.reverse if @reverse_list
       if matches != @matches
-        @matches =  matches
-        @selection = 0
+        @matches = matches
+        @selection = @reverse_list ? @matches.length - 1 : 0
         print_matches
+        move_cursor_to_selected_line
       end
     end
 
@@ -590,7 +861,7 @@ module CommandT
       if @has_focus
         @has_focus = false
         if VIM::has_syntax?
-          ::VIM::command 'highlight link CommandTSelection Visual'
+          ::VIM::command "highlight link CommandTSelection #{@highlight_color}"
         end
       end
     end
@@ -628,39 +899,77 @@ module CommandT
 
   private
 
+    def move_cursor_to_selected_line
+      # on some non-GUI terminals, the cursor doesn't hide properly
+      # so we move the cursor to prevent it from blinking away in the
+      # upper-left corner in a distracting fashion
+      @window.cursor = [@selection + 1, 0]
+    end
+
     def print_error msg
       return unless VIM::Window.select(@window)
       unlock
       clear
-      @window.height = 1
+      @window.height = @min_height > 0 ? @min_height : 1
       @@buffer[1] = "-- #{msg} --"
       lock
     end
 
     def restore_window_dimensions
-      # sort from tallest to shortest
-      @windows.sort! { |a, b| b.height <=> a.height }
+      # sort from tallest to shortest, tie-breaking on window width
+      @windows.sort! do |a, b|
+        order = b.height <=> a.height
+        if order.zero?
+          b.width <=> a.width
+        else
+          order
+        end
+      end
 
       # starting with the tallest ensures that there are no constraints
       # preventing windows on the side of vertical splits from regaining
       # their original full size
       @windows.each do |w|
         # beware: window may be nil
-        window = ::VIM::Window[w.index]
-        window.height = w.height if window
+        if window = ::VIM::Window[w.index]
+          window.height = w.height
+          window.width  = w.width
+        end
       end
     end
 
     def match_text_for_idx idx
-      match = truncated_match @matches[idx]
+      match = truncated_match @matches[idx].to_s
       if idx == @selection
-        prefix = @@selection_marker
+        prefix = SELECTION_MARKER
         suffix = padding_for_selected_match match
       else
-        prefix = @@unselected_marker
+        if VIM::has_syntax? && VIM::has_conceal?
+          match = match_with_syntax_highlight match
+        end
+        prefix = UNSELECTED_MARKER
         suffix = ''
       end
       prefix + match + suffix
+    end
+
+    # Highlight matching characters within the matched string.
+    #
+    # Note that this is only approximate; it will highlight the first matching
+    # instances within the string, which may not actually be the instances that
+    # were used by the matching/scoring algorithm to determine the best score
+    # for the match.
+    #
+    def match_with_syntax_highlight match
+      highlight_chars = @prompt.abbrev.downcase.chars.to_a
+      match.chars.inject([]) do |output, char|
+        if char.downcase == highlight_chars.first
+          highlight_chars.shift
+          output.concat [MH_START, char, MH_END]
+        else
+          output << char
+        end
+      end.join
     end
 
     # Print just the specified match.
@@ -684,7 +993,8 @@ module CommandT
         @window_width = @window.width # update cached value
         max_lines = VIM::Screen.lines - 5
         max_lines = 1 if max_lines < 0
-        actual_lines = match_count > max_lines ? max_lines : match_count
+        actual_lines = match_count < @min_height ? @min_height : match_count
+        actual_lines = max_lines if actual_lines > max_lines
         @window.height = actual_lines
         (1..actual_lines).each do |line|
           idx = line - 1
@@ -702,10 +1012,10 @@ module CommandT
     # highlighting extends all the way to the right edge of the window.
     def padding_for_selected_match str
       len = str.length
-      if len >= @window_width - @@marker_length
+      if len >= @window_width - MARKER_LENGTH
         ''
       else
-        ' ' * (@window_width - @@marker_length - len)
+        ' ' * (@window_width - MARKER_LENGTH - len)
       end
     end
 
@@ -713,7 +1023,7 @@ module CommandT
     # window width.
     def truncated_match str
       len = str.length
-      available_width = @window_width - @@marker_length
+      available_width = @window_width - MARKER_LENGTH
       return str if len <= available_width
       left = (available_width / 2) - 1
       right = (available_width / 2) - 2 + (available_width % 2)
@@ -728,20 +1038,13 @@ module CommandT
     end
 
     def get_cursor_highlight
-      # as :highlight returns nothing and only prints,
-      # must redirect its output to a variable
-      ::VIM::command 'silent redir => g:command_t_cursor_highlight'
-
-      # force 0 verbosity to ensure origin information isn't printed as well
-      ::VIM::command 'silent! 0verbose highlight Cursor'
-      ::VIM::command 'silent redir END'
-
       # there are 3 possible formats to check for, each needing to be
       # transformed in a certain way in order to reapply the highlight:
       #   Cursor xxx guifg=bg guibg=fg      -> :hi! Cursor guifg=bg guibg=fg
       #   Cursor xxx links to SomethingElse -> :hi! link Cursor SomethingElse
       #   Cursor xxx cleared                -> :hi! clear Cursor
-      highlight = ::VIM::evaluate 'g:command_t_cursor_highlight'
+      highlight = VIM::capture 'silent! 0verbose highlight Cursor'
+
       if highlight =~ /^Cursor\s+xxx\s+links to (\w+)/
         "link Cursor #{$~[1]}"
       elsif highlight =~ /^Cursor\s+xxx\s+cleared/
@@ -941,9 +1244,280 @@ module CommandT
     end
   end # class Prompt
 end # module CommandT
+ruby/command-t/scanner/buffer_scanner.rb	[[[1
+42
+# Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/vim'
+require 'command-t/vim/path_utilities'
+require 'command-t/scanner'
+
+module CommandT
+  # Returns a list of all open buffers.
+  class BufferScanner < Scanner
+    include VIM::PathUtilities
+
+    def paths
+      (0..(::VIM::Buffer.count - 1)).map do |n|
+        buffer = ::VIM::Buffer[n]
+        if buffer.name # beware, may be nil
+          relative_path_under_working_directory buffer.name
+        end
+      end.compact
+    end
+  end # class BufferScanner
+end # module CommandT
+ruby/command-t/scanner/file_scanner.rb	[[[1
+118
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/vim'
+require 'command-t/scanner'
+
+module CommandT
+  # Reads the current directory recursively for the paths to all regular files.
+  class FileScanner < Scanner
+    class FileLimitExceeded < ::RuntimeError; end
+    attr_accessor :path
+
+    def initialize path = Dir.pwd, options = {}
+      @paths                = {}
+      @paths_keys           = []
+      @path                 = path
+      @max_depth            = options[:max_depth] || 15
+      @max_files            = options[:max_files] || 30_000
+      @max_caches           = options[:max_caches] || 1
+      @scan_dot_directories = options[:scan_dot_directories] || false
+      @wild_ignore          = options[:wild_ignore]
+      @base_wild_ignore     = VIM::wild_ignore
+    end
+
+    def paths
+      return @paths[@path] if @paths.has_key?(@path)
+      begin
+        ensure_cache_under_limit
+        @paths[@path] = []
+        @depth        = 0
+        @files        = 0
+        @prefix_len   = @path.chomp('/').length
+        set_wild_ignore(@wild_ignore)
+        add_paths_for_directory @path, @paths[@path]
+      rescue FileLimitExceeded
+      ensure
+        set_wild_ignore(@base_wild_ignore)
+      end
+      @paths[@path]
+    end
+
+    def flush
+      @paths = {}
+    end
+
+  private
+
+    def ensure_cache_under_limit
+      # Ruby 1.8 doesn't have an ordered hash, so use a separate stack to
+      # track and expire the oldest entry in the cache
+      if @max_caches > 0 && @paths_keys.length >= @max_caches
+        @paths.delete @paths_keys.shift
+      end
+      @paths_keys << @path
+    end
+
+    def path_excluded? path
+      # first strip common prefix (@path) from path to match VIM's behavior
+      path = path[(@prefix_len + 1)..-1]
+      path = VIM::escape_for_single_quotes path
+      ::VIM::evaluate("empty(expand(fnameescape('#{path}')))").to_i == 1
+    end
+
+    def looped_symlink? path
+      if File.symlink?(path)
+        target = File.expand_path(File.readlink(path), File.dirname(path))
+        target.include?(@path) || @path.include?(target)
+      end
+    end
+
+    def set_wild_ignore(ignore)
+      ::VIM::command("set wildignore=#{ignore}") if @wild_ignore
+    end
+
+    def add_paths_for_directory dir, accumulator
+      Dir.foreach(dir) do |entry|
+        next if ['.', '..'].include?(entry)
+        path = File.join(dir, entry)
+        unless path_excluded?(path)
+          if File.file?(path)
+            @files += 1
+            raise FileLimitExceeded if @files > @max_files
+            accumulator << path[@prefix_len + 1..-1]
+          elsif File.directory?(path)
+            next if @depth >= @max_depth
+            next if (entry.match(/\A\./) && !@scan_dot_directories)
+            next if looped_symlink?(path)
+            @depth += 1
+            add_paths_for_directory path, accumulator
+            @depth -= 1
+          end
+        end
+      end
+    rescue Errno::EACCES
+      # skip over directories for which we don't have access
+    end
+  end # class FileScanner
+end # module CommandT
+ruby/command-t/scanner/jump_scanner.rb	[[[1
+54
+# Copyright 2011 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/vim'
+require 'command-t/vim/path_utilities'
+require 'command-t/scanner'
+
+module CommandT
+  # Returns a list of files in the jumplist.
+  class JumpScanner < Scanner
+    include VIM::PathUtilities
+
+    def paths
+      jumps_with_filename = jumps.lines.select do |line|
+        line_contains_filename?(line)
+      end
+      filenames = jumps_with_filename[1..-2].map do |line|
+        relative_path_under_working_directory line.split[3]
+      end
+
+      filenames.sort.uniq
+    end
+
+  private
+
+    def line_contains_filename? line
+      line.split.count > 3
+    end
+
+    def jumps
+      VIM::capture 'silent jumps'
+    end
+  end # class JumpScanner
+end # module CommandT
+ruby/command-t/scanner/tag_scanner.rb	[[[1
+49
+# Copyright 2011-2012 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/vim'
+require 'command-t/scanner'
+
+module CommandT
+  class TagScanner < Scanner
+    attr_reader :include_filenames
+
+    def initialize options = {}
+      @include_filenames = options[:include_filenames] || false
+    end
+
+    def paths
+      taglist.map do |tag|
+        path = tag['name']
+        path << ":#{tag['filename']}" if @include_filenames
+        path
+      end.uniq.sort
+    end
+
+  private
+
+    def taglist
+      ::VIM::evaluate 'taglist(".")'
+    end
+  end # class TagScanner
+end # module CommandT
 ruby/command-t/scanner.rb	[[[1
-93
-# Copyright 2010 Wincent Colaiuta. All rights reserved.
+28
+# Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -969,72 +1543,7 @@ ruby/command-t/scanner.rb	[[[1
 require 'command-t/vim'
 
 module CommandT
-  # Reads the current directory recursively for the paths to all regular files.
-  class Scanner
-    class FileLimitExceeded < ::RuntimeError; end
-
-    def initialize path = Dir.pwd, options = {}
-      @path                 = path
-      @max_depth            = options[:max_depth] || 15
-      @max_files            = options[:max_files] || 10_000
-      @scan_dot_directories = options[:scan_dot_directories] || false
-    end
-
-    def paths
-      return @paths unless @paths.nil?
-      begin
-        @paths = []
-        @depth = 0
-        @files = 0
-        @prefix_len = @path.chomp('/').length
-        add_paths_for_directory @path, @paths
-      rescue FileLimitExceeded
-      end
-      @paths
-    end
-
-    def flush
-      @paths = nil
-    end
-
-    def path= str
-      if @path != str
-        @path = str
-        flush
-      end
-    end
-
-  private
-
-    def path_excluded? path
-      # first strip common prefix (@path) from path to match VIM's behavior
-      path = path[(@prefix_len + 1)..-1]
-      path = VIM::escape_for_single_quotes path
-      ::VIM::evaluate("empty(expand(fnameescape('#{path}')))").to_i == 1
-    end
-
-    def add_paths_for_directory dir, accumulator
-      Dir.foreach(dir) do |entry|
-        next if ['.', '..'].include?(entry)
-        path = File.join(dir, entry)
-        unless path_excluded?(path)
-          if File.file?(path)
-            @files += 1
-            raise FileLimitExceeded if @files > @max_files
-            accumulator << path[@prefix_len + 1..-1]
-          elsif File.directory?(path)
-            next if @depth >= @max_depth
-            next if (entry.match(/\A\./) && !@scan_dot_directories)
-            @depth += 1
-            add_paths_for_directory path, accumulator
-            @depth -= 1
-          end
-        end
-      end
-    rescue Errno::EACCES
-      # skip over directories for which we don't have access
-    end
-  end # class Scanner
+  class Scanner; end
 end # module CommandT
 ruby/command-t/settings.rb	[[[1
 77
@@ -1116,8 +1625,8 @@ module CommandT
   end # class Settings
 end # module CommandT
 ruby/command-t/stub.rb	[[[1
-46
-# Copyright 2010 Wincent Colaiuta. All rights reserved.
+42
+# Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -1146,12 +1655,8 @@ module CommandT
                     'Please see INSTALLATION and TROUBLE-SHOOTING in the help',
                     'For more information type:    :help command-t']
 
-    def show
-      warn *@@load_error
-    end
-
-    def flush
-      warn *@@load_error
+    [:flush, :show_buffer_finder, :show_file_finder, :show_tag_finder].each do |method|
+      define_method(method.to_sym) { warn *@@load_error }
     end
 
   private
@@ -1162,6 +1667,48 @@ module CommandT
       ::VIM::command 'echohl none'
     end
   end # class Stub
+end # module CommandT
+ruby/command-t/vim/path_utilities.rb	[[[1
+40
+# Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+require 'command-t/vim'
+
+module CommandT
+  module VIM
+    module PathUtilities
+
+    private
+
+      def relative_path_under_working_directory path
+        # any path under the working directory will be specified as a relative
+        # path to improve the readability of the buffer list etc
+        pwd = File.expand_path(VIM::pwd) + '/'
+        path.index(pwd) == 0 ? path[pwd.length..-1] : path
+      end
+    end # module PathUtilities
+  end # module VIM
 end # module CommandT
 ruby/command-t/vim/screen.rb	[[[1
 32
@@ -1238,8 +1785,8 @@ module CommandT
   end # module VIM
 end # module CommandT
 ruby/command-t/vim.rb	[[[1
-43
-# Copyright 2010 Wincent Colaiuta. All rights reserved.
+63
+# Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -1271,8 +1818,28 @@ module CommandT
       ::VIM::evaluate('has("syntax")').to_i != 0
     end
 
+    def self.exists? str
+      ::VIM::evaluate(%{exists("#{str}")}).to_i != 0
+    end
+
+    def self.has_conceal?
+      ::VIM::evaluate('has("conceal")').to_i != 0
+    end
+
     def self.pwd
       ::VIM::evaluate 'getcwd()'
+    end
+
+    def self.wild_ignore
+      exists?('&wildignore') && ::VIM::evaluate('&wildignore').to_s
+    end
+
+    # Execute cmd, capturing the output into a variable and returning it.
+    def self.capture cmd
+      ::VIM::command 'silent redir => g:command_t_captured_output'
+      ::VIM::command cmd
+      ::VIM::command 'silent redir END'
+      ::VIM::evaluate 'g:command_t_captured_output'
     end
 
     # Escape a string for safe inclusion in a Vim single-quoted string
@@ -1350,8 +1917,8 @@ void Init_ext()
     rb_define_method(cCommandTMatcher, "matches_for", CommandTMatcher_matches_for, 1);
 }
 ruby/command-t/match.c	[[[1
-189
-// Copyright 2010 Wincent Colaiuta. All rights reserved.
+216
+// Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -1374,66 +1941,79 @@ ruby/command-t/match.c	[[[1
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include "float.h"
 #include "match.h"
 #include "ext.h"
 #include "ruby_compat.h"
 
 // use a struct to make passing params during recursion easier
-typedef struct
-{
-    char    *str_p;                 // pointer to string to be searched
-    long    str_len;                // length of same
-    char    *abbrev_p;              // pointer to search string (abbreviation)
-    long    abbrev_len;             // length of same
+typedef struct {
+    char    *haystack_p;            // pointer to the path string to be searched
+    long    haystack_len;           // length of same
+    char    *needle_p;              // pointer to search string (needle)
+    long    needle_len;             // length of same
     double  max_score_per_char;
     int     dot_file;               // boolean: true if str is a dot-file
     int     always_show_dot_files;  // boolean
     int     never_show_dot_files;   // boolean
+    double  *memo;                  // memoization
 } matchinfo_t;
 
-double recursive_match(matchinfo_t *m,  // sharable meta-data
-                       long str_idx,    // where in the path string to start
-                       long abbrev_idx, // where in the search string to start
-                       long last_idx,   // location of last matched character
-                       double score)    // cumulative score so far
+double recursive_match(matchinfo_t *m,    // sharable meta-data
+                       long haystack_idx, // where in the path string to start
+                       long needle_idx,   // where in the needle string to start
+                       long last_idx,     // location of last matched character
+                       double score)      // cumulative score so far
 {
-    double seen_score = 0;      // remember best score seen via recursion
-    int dot_file_match = 0;     // true if abbrev matches a dot-file
-    int dot_search = 0;         // true if searching for a dot
+    double seen_score = 0;  // remember best score seen via recursion
+    int dot_file_match = 0; // true if needle matches a dot-file
+    int dot_search = 0;     // true if searching for a dot
 
-    for (long i = abbrev_idx; i < m->abbrev_len; i++)
-    {
-        char c = m->abbrev_p[i];
+    // do we have a memoized result we can return?
+    double memoized = m->memo[needle_idx * m->needle_len + haystack_idx];
+    if (memoized != DBL_MAX)
+        return memoized;
+
+    // bail early if not enough room (left) in haystack for (rest of) needle
+    if (m->haystack_len - haystack_idx < m->needle_len - needle_idx) {
+        score = 0.0;
+        goto memoize;
+    }
+
+    for (long i = needle_idx; i < m->needle_len; i++) {
+        char c = m->needle_p[i];
         if (c == '.')
             dot_search = 1;
         int found = 0;
-        for (long j = str_idx; j < m->str_len; j++, str_idx++)
-        {
-            char d = m->str_p[j];
-            if (d == '.')
-            {
-                if (j == 0 || m->str_p[j - 1] == '/')
-                {
+
+        // similar to above, we'll stop iterating when we know we're too close
+        // to the end of the string to possibly match
+        for (long j = haystack_idx;
+             j <= m->haystack_len - (m->needle_len - i);
+             j++, haystack_idx++) {
+            char d = m->haystack_p[j];
+            if (d == '.') {
+                if (j == 0 || m->haystack_p[j - 1] == '/') {
                     m->dot_file = 1;        // this is a dot-file
                     if (dot_search)         // and we are searching for a dot
                         dot_file_match = 1; // so this must be a match
                 }
-            }
-            else if (d >= 'A' && d <= 'Z')
+            } else if (d >= 'A' && d <= 'Z') {
                 d += 'a' - 'A'; // add 32 to downcase
-            if (c == d)
-            {
+            }
+
+            if (c == d) {
                 found = 1;
                 dot_search = 0;
 
                 // calculate score
                 double score_for_char = m->max_score_per_char;
                 long distance = j - last_idx;
-                if (distance > 1)
-                {
+
+                if (distance > 1) {
                     double factor = 1.0;
-                    char last = m->str_p[j - 1];
-                    char curr = m->str_p[j]; // case matters, so get again
+                    char last = m->haystack_p[j - 1];
+                    char curr = m->haystack_p[j]; // case matters, so get again
                     if (last == '/')
                         factor = 0.9;
                     else if (last == '-' ||
@@ -1453,8 +2033,7 @@ double recursive_match(matchinfo_t *m,  // sharable meta-data
                     score_for_char *= factor;
                 }
 
-                if (++j < m->str_len)
-                {
+                if (++j < m->haystack_len) {
                     // bump cursor one char to the right and
                     // use recursion to try and find a better match
                     double sub_score = recursive_match(m, j, i, last_idx, score);
@@ -1463,66 +2042,81 @@ double recursive_match(matchinfo_t *m,  // sharable meta-data
                 }
 
                 score += score_for_char;
-                last_idx = str_idx++;
+                last_idx = haystack_idx + 1;
                 break;
             }
         }
-        if (!found)
-            return 0.0;
+
+        if (!found) {
+            score = 0.0;
+            goto memoize;
+        }
     }
-    if (m->dot_file)
-    {
-        if (m->never_show_dot_files ||
-            (!dot_file_match && !m->always_show_dot_files))
-            return 0.0;
+
+    if (m->dot_file &&
+        (m->never_show_dot_files ||
+         (!dot_file_match && !m->always_show_dot_files))) {
+        score = 0.0;
+        goto memoize;
     }
-    return (score > seen_score) ? score : seen_score;
+    score = score > seen_score ? score : seen_score;
+
+memoize:
+    m->memo[needle_idx * m->needle_len + haystack_idx] = score;
+    return score;
 }
 
-// Match.new abbrev, string, options = {}
+// Match.new needle, string, options = {}
 VALUE CommandTMatch_initialize(int argc, VALUE *argv, VALUE self)
 {
     // process arguments: 2 mandatory, 1 optional
-    VALUE str, abbrev, options;
-    if (rb_scan_args(argc, argv, "21", &str, &abbrev, &options) == 2)
+    VALUE str, needle, options;
+    if (rb_scan_args(argc, argv, "21", &str, &needle, &options) == 2)
         options = Qnil;
-    str             = StringValue(str);
-    abbrev          = StringValue(abbrev); // already downcased by caller
+    str    = StringValue(str);
+    needle = StringValue(needle); // already downcased by caller
 
     // check optional options hash for overrides
     VALUE always_show_dot_files = CommandT_option_from_hash("always_show_dot_files", options);
     VALUE never_show_dot_files = CommandT_option_from_hash("never_show_dot_files", options);
 
     matchinfo_t m;
-    m.str_p                 = RSTRING_PTR(str);
-    m.str_len               = RSTRING_LEN(str);
-    m.abbrev_p              = RSTRING_PTR(abbrev);
-    m.abbrev_len            = RSTRING_LEN(abbrev);
-    m.max_score_per_char    = (1.0 / m.str_len + 1.0 / m.abbrev_len) / 2;
+    m.haystack_p            = RSTRING_PTR(str);
+    m.haystack_len          = RSTRING_LEN(str);
+    m.needle_p              = RSTRING_PTR(needle);
+    m.needle_len            = RSTRING_LEN(needle);
+    m.max_score_per_char    = (1.0 / m.haystack_len + 1.0 / m.needle_len) / 2;
     m.dot_file              = 0;
     m.always_show_dot_files = always_show_dot_files == Qtrue;
     m.never_show_dot_files  = never_show_dot_files == Qtrue;
 
     // calculate score
     double score = 1.0;
-    if (m.abbrev_len == 0) // special case for zero-length search string
-    {
+
+    // special case for zero-length search string
+    if (m.needle_len == 0) {
+
         // filter out dot files
-        if (!m.always_show_dot_files)
-        {
-            for (long i = 0; i < m.str_len; i++)
-            {
-                char c = m.str_p[i];
-                if (c == '.' && (i == 0 || m.str_p[i - 1] == '/'))
-                {
+        if (!m.always_show_dot_files) {
+            for (long i = 0; i < m.haystack_len; i++) {
+                char c = m.haystack_p[i];
+
+                if (c == '.' && (i == 0 || m.haystack_p[i - 1] == '/')) {
                     score = 0.0;
                     break;
                 }
             }
         }
-    }
-    else // normal case
+    } else if (m.haystack_len > 0) { // normal case
+
+        // prepare for memoization
+        double memo[m.haystack_len * m.needle_len];
+        for (long i = 0, max = m.haystack_len * m.needle_len; i < max; i++)
+            memo[i] = DBL_MAX;
+        m.memo = memo;
+
         score = recursive_match(&m, 0, 0, 0, 0.0);
+    }
 
     // clean-up and final book-keeping
     rb_iv_set(self, "@score", rb_float_new(score));
@@ -1541,8 +2135,8 @@ VALUE CommandTMatch_to_s(VALUE self)
     return rb_iv_get(self, "@str");
 }
 ruby/command-t/matcher.c	[[[1
-164
-// Copyright 2010 Wincent Colaiuta. All rights reserved.
+169
+// Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -1576,40 +2170,39 @@ int comp_alpha(const void *a, const void *b)
 {
     VALUE a_val = *(VALUE *)a;
     VALUE b_val = *(VALUE *)b;
-    ID to_s = rb_intern("to_s");
-
+    ID    to_s  = rb_intern("to_s");
     VALUE a_str = rb_funcall(a_val, to_s, 0);
     VALUE b_str = rb_funcall(b_val, to_s, 0);
-    char *a_p = RSTRING_PTR(a_str);
-    long a_len = RSTRING_LEN(a_str);
-    char *b_p = RSTRING_PTR(b_str);
-    long b_len = RSTRING_LEN(b_str);
-    int order = 0;
-    if (a_len > b_len)
-    {
+    char  *a_p  = RSTRING_PTR(a_str);
+    long  a_len = RSTRING_LEN(a_str);
+    char  *b_p  = RSTRING_PTR(b_str);
+    long  b_len = RSTRING_LEN(b_str);
+    int   order = 0;
+
+    if (a_len > b_len) {
         order = strncmp(a_p, b_p, b_len);
         if (order == 0)
             order = 1; // shorter string (b) wins
-    }
-    else if (a_len < b_len)
-    {
+    } else if (a_len < b_len) {
         order = strncmp(a_p, b_p, a_len);
         if (order == 0)
             order = -1; // shorter string (a) wins
-    }
-    else
+    } else {
         order = strncmp(a_p, b_p, a_len);
+    }
+
     return order;
 }
 
 // comparison function for use with qsort
 int comp_score(const void *a, const void *b)
 {
-    VALUE a_val = *(VALUE *)a;
-    VALUE b_val = *(VALUE *)b;
-    ID score = rb_intern("score");
+    VALUE  a_val   = *(VALUE *)a;
+    VALUE  b_val   = *(VALUE *)b;
+    ID     score   = rb_intern("score");
     double a_score = RFLOAT_VALUE(rb_funcall(a_val, score, 0));
     double b_score = RFLOAT_VALUE(rb_funcall(b_val, score, 0));
+
     if (a_score > b_score)
         return -1; // a scores higher, a should appear sooner
     else if (a_score < b_score)
@@ -1622,21 +2215,26 @@ VALUE CommandTMatcher_initialize(int argc, VALUE *argv, VALUE self)
 {
     // process arguments: 1 mandatory, 1 optional
     VALUE scanner, options;
+
     if (rb_scan_args(argc, argv, "11", &scanner, &options) == 1)
         options = Qnil;
     if (NIL_P(scanner))
         rb_raise(rb_eArgError, "nil scanner");
+
     rb_iv_set(self, "@scanner", scanner);
 
     // check optional options hash for overrides
     VALUE always_show_dot_files = CommandT_option_from_hash("always_show_dot_files", options);
     if (always_show_dot_files != Qtrue)
         always_show_dot_files = Qfalse;
+
     VALUE never_show_dot_files = CommandT_option_from_hash("never_show_dot_files", options);
     if (never_show_dot_files != Qtrue)
         never_show_dot_files = Qfalse;
+
     rb_iv_set(self, "@always_show_dot_files", always_show_dot_files);
     rb_iv_set(self, "@never_show_dot_files", never_show_dot_files);
+
     return Qnil;
 }
 
@@ -1663,8 +2261,7 @@ VALUE CommandTMatcher_sorted_matches_for(VALUE self, VALUE abbrev, VALUE options
         limit = RARRAY_LEN(matches);
 
     // will return an array of strings, not an array of Match objects
-    for (long i = 0; i < limit; i++)
-    {
+    for (long i = 0; i < limit; i++) {
         VALUE str = rb_funcall(RARRAY_PTR(matches)[i], rb_intern("to_s"), 0);
         RARRAY_PTR(matches)[i] = str;
     }
@@ -1673,6 +2270,7 @@ VALUE CommandTMatcher_sorted_matches_for(VALUE self, VALUE abbrev, VALUE options
     if (limit < RARRAY_LEN(matches))
         (void)rb_funcall(matches, rb_intern("slice!"), 2, LONG2NUM(limit),
             LONG2NUM(RARRAY_LEN(matches) - limit));
+
     return matches;
 }
 
@@ -1680,30 +2278,31 @@ VALUE CommandTMatcher_matches_for(VALUE self, VALUE abbrev)
 {
     if (NIL_P(abbrev))
         rb_raise(rb_eArgError, "nil abbrev");
+
     VALUE matches = rb_ary_new();
     VALUE scanner = rb_iv_get(self, "@scanner");
     VALUE always_show_dot_files = rb_iv_get(self, "@always_show_dot_files");
     VALUE never_show_dot_files = rb_iv_get(self, "@never_show_dot_files");
     VALUE options = Qnil;
-    if (always_show_dot_files == Qtrue)
-    {
+
+    if (always_show_dot_files == Qtrue) {
         options = rb_hash_new();
         rb_hash_aset(options, ID2SYM(rb_intern("always_show_dot_files")), always_show_dot_files);
-    }
-    else if (never_show_dot_files == Qtrue)
-    {
+    } else if (never_show_dot_files == Qtrue) {
         options = rb_hash_new();
         rb_hash_aset(options, ID2SYM(rb_intern("never_show_dot_files")), never_show_dot_files);
     }
+
     abbrev = rb_funcall(abbrev, rb_intern("downcase"), 0);
     VALUE paths = rb_funcall(scanner, rb_intern("paths"), 0);
-    for (long i = 0, max = RARRAY_LEN(paths); i < max; i++)
-    {
+
+    for (long i = 0, max = RARRAY_LEN(paths); i < max; i++) {
         VALUE path = RARRAY_PTR(paths)[i];
         VALUE match = rb_funcall(cCommandTMatch, rb_intern("new"), 3, path, abbrev, options);
         if (rb_funcall(match, rb_intern("matches?"), 0) == Qtrue)
             rb_funcall(matches, rb_intern("push"), 1, match);
     }
+
     return matches;
 }
 ruby/command-t/ext.h	[[[1
@@ -1885,7 +2484,7 @@ ruby/command-t/depend	[[[1
 
 CFLAGS += -std=c99 -Wall -Wextra -Wno-unused-parameter
 doc/command-t.txt	[[[1
-736
+941
 *command-t.txt* Command-T plug-in for Vim         *command-t*
 
 CONTENTS                                        *command-t-contents*
@@ -1900,18 +2499,19 @@ CONTENTS                                        *command-t-contents*
  7. Mappings                |command-t-mappings|
  8. Options                 |command-t-options|
  9. Authors                 |command-t-authors|
-10. Website                 |command-t-website|
-11. Donations               |command-t-donations|
-12. License                 |command-t-license|
-13. History                 |command-t-history|
+10. Development             |command-t-development|
+11. Website                 |command-t-website|
+12. Donations               |command-t-donations|
+13. License                 |command-t-license|
+14. History                 |command-t-history|
 
 
 INTRODUCTION                                    *command-t-intro*
 
 The Command-T plug-in provides an extremely fast, intuitive mechanism for
-opening files with a minimal number of keystrokes. It's named "Command-T"
-because it is inspired by the "Go to File" window bound to Command-T in
-TextMate.
+opening files and buffers with a minimal number of keystrokes. It's named
+"Command-T" because it is inspired by the "Go to File" window bound to
+Command-T in TextMate.
 
 Files are selected by typing characters that appear in their paths, and are
 ordered by an algorithm which knows that characters that appear in certain
@@ -2035,11 +2635,27 @@ you can build the extension with:
   ruby extconf.rb
   make
 
-Note: If you are an RVM user, you must perform the build using the same
-version of Ruby that Vim itself is linked against. This will often be the
-system Ruby, which can be selected before issuing the "make" command with:
+Note: If you are an RVM or rbenv user, you must perform the build using the
+same version of Ruby that Vim itself is linked against. This will often be the
+system Ruby, which can be selected before issuing the "make" command with one
+of the following commands:
 
   rvm use system
+  rbenv local system
+
+Note: Make sure you compile targeting the same architecture Vim was built for.
+For instance, MacVim binaries are built for i386, but sometimes GCC compiles
+for x86_64. First you have to check the platform Vim was built for:
+
+  vim --version
+  ...
+  Compilation: gcc ... -arch i386 ...
+  ...
+
+and make sure you use the correct ARCHFLAGS during compilation:
+
+  export ARCHFLAGS="-arch i386"
+  make
 
 
 MANAGING USING PATHOGEN                         *command-t-pathogen*
@@ -2077,8 +2693,9 @@ Or you can switch to a specific release with:
 
 After installing or updating you must build the extension:
 
-  cd ~/.vim/bundle/command-t
-  rake make
+  cd ~/.vim/bundle/command-t/ruby/command-t
+  ruby extconf.rb
+  make
 
 While the Vimball installation automatically generates the help tags, under
 Pathogen it is necessary to do so explicitly from inside Vim:
@@ -2128,17 +2745,17 @@ you eliminate the discrepancy.
 
 USAGE                                           *command-t-usage*
 
-Bring up the Command-T match window by typing:
+Bring up the Command-T file window by typing:
 
   <Leader>t
 
 This mapping is set up automatically for you, provided you do not already have
-a mapping for <Leader>t or |:CommandT|. You can also bring up the match window
+a mapping for <Leader>t or |:CommandT|. You can also bring up the file window
 by issuing the command:
 
   :CommandT
 
-A prompt will appear at the bottom of the screen along with a match window
+A prompt will appear at the bottom of the screen along with a file window
 showing all of the files in the current directory (as returned by the
 |:pwd| command).
 
@@ -2172,13 +2789,13 @@ The following mappings are active when the prompt has focus:
     <C-a>       move the cursor to the start (left)
     <C-e>       move the cursor to the end (right)
     <C-u>       clear the contents of the prompt
-    <Tab>       change focus to the match listing
+    <Tab>       change focus to the file listing
 
-The following mappings are active when the match listing has focus:
+The following mappings are active when the file listing has focus:
 
     <Tab>       change focus to the prompt
 
-The following mappings are active when either the prompt or the match listing
+The following mappings are active when either the prompt or the file listing
 has focus:
 
     <CR>        open the selected file
@@ -2186,22 +2803,24 @@ has focus:
     <C-s>       open the selected file in a new split window
     <C-v>       open the selected file in a new vertical split window
     <C-t>       open the selected file in a new tab
-    <C-j>       select next file in the match listing
-    <C-n>       select next file in the match listing
-    <Down>      select next file in the match listing
-    <C-k>       select previous file in the match listing
-    <C-p>       select previous file in the match listing
-    <Up>        select previous file in the match listing
-    <C-c>       cancel (dismisses match listing)
+    <C-j>       select next file in the file listing
+    <C-n>       select next file in the file listing
+    <Down>      select next file in the file listing
+    <C-k>       select previous file in the file listing
+    <C-p>       select previous file in the file listing
+    <Up>        select previous file in the file listing
+    <C-f>       flush the cache (see |:CommandTFlush| for details)
+    <C-q>       place the current matches in the quickfix window
+    <C-c>       cancel (dismisses file listing)
 
 The following is also available on terminals which support it:
 
-    <Esc>       cancel (dismisses match listing)
+    <Esc>       cancel (dismisses file listing)
 
 Note that the default mappings can be overriden by setting options in your
 ~/.vimrc file (see the OPTIONS section for a full list of available options).
 
-In addition, when the match listing has focus, typing a character will cause
+In addition, when the file listing has focus, typing a character will cause
 the selection to jump to the first path which begins with that character.
 Typing multiple characters consecutively can be used to distinguish between
 paths which begin with the same prefix.
@@ -2210,31 +2829,55 @@ paths which begin with the same prefix.
 COMMANDS                                        *command-t-commands*
 
                                                 *:CommandT*
-|:CommandT|     Brings up the Command-T match window, starting in the
+|:CommandT|     Brings up the Command-T file window, starting in the
                 current working directory as returned by the|:pwd|
                 command.
+
+                                                *:CommandTBuffer*
+|:CommandTBuffer|Brings up the Command-T buffer window.
+                This works exactly like the standard file window,
+                except that the selection is limited to files that
+                you already have open in buffers.
+
+                                                *:CommandTJumps*
+|:CommandTJump| Brings up the Command-T jumplist window.
+                This works exactly like the standard file window,
+                except that the selection is limited to files that
+                you already have in the jumplist. Note that jumps
+                can persist across Vim sessions (see Vim's |jumplist|
+                documentation for more info).
+
+                                                *:CommandTTag*
+|:CommandTTag| Brings up the Command-T window tags window, which can
+                be used to select from the tags, if any, returned by
+                Vim's |taglist()| function. See Vim's |tag| documentation
+                for general info on tags.
 
                                                 *:CommandTFlush*
 |:CommandTFlush|Instructs the plug-in to flush its path cache, causing
                 the directory to be rescanned for new or deleted paths
-                the next time the match window is shown. In addition, all
-                configuration settings are re-evaluated, causing any
-                changes made to settings via the |:let| command to be picked
-                up.
+                the next time the file window is shown (pressing <C-f> when
+                a match listing is visible flushes the cache immediately; this
+                mapping is configurable via the |g:CommandTRefreshMap|
+                setting). In addition, all configuration settings are
+                re-evaluated, causing any changes made to settings via the
+                |:let| command to be picked up.
 
 
 MAPPINGS                                        *command-t-mappings*
 
-By default Command-T comes with only one mapping:
+By default Command-T comes with only two mappings:
 
-  <Leader>t     bring up the Command-T match window
+  <Leader>t     bring up the Command-T file window
+  <Leader>b     bring up the Command-T buffer window
 
 However, Command-T won't overwrite a pre-existing mapping so if you prefer
-to define a different mapping use a line like this in your ~/.vimrc:
+to define different mappings use lines like these in your ~/.vimrc:
 
-  nmap <silent> <Leader>t :CommandT<CR>
+  nnoremap <silent> <Leader>t :CommandT<CR>
+  nnoremap <silent> <Leader>b :CommandTBuffer<CR>
 
-Replacing "<Leader>t" with your mapping of choice.
+Replacing "<Leader>t" or "<Leader>b" with your mapping of choice.
 
 Note that in the case of MacVim you actually can map to Command-T (written
 as <D-t> in Vim) in your ~/.gvimrc file if you first unmap the existing menu
@@ -2264,46 +2907,71 @@ changes via |:let|.
 
 Following is a list of all available options:
 
-                                                *g:CommandTMaxFiles*
-  |g:CommandTMaxFiles|                           number (default 10000)
+                                               *g:CommandTMaxFiles*
+  |g:CommandTMaxFiles|                           number (default 30000)
 
       The maximum number of files that will be considered when scanning the
-      current directory. Upon reaching this number scanning stops.
+      current directory. Upon reaching this number scanning stops. This
+      limit applies only to file listings and is ignored for buffer
+      listings.
 
-                                                *g:CommandTMaxDepth*
+                                               *g:CommandTMaxDepth*
   |g:CommandTMaxDepth|                           number (default 15)
 
       The maximum depth (levels of recursion) to be explored when scanning the
       current directory. Any directories at levels beyond this depth will be
       skipped.
 
-                                                *g:CommandTMaxHeight*
+                                               *g:CommandTMaxCachedDirectories*
+  |g:CommandTMaxCachedDirectories|               number (default 1)
+
+      The maximum number of directories whose contents should be cached when
+      recursively scanning. With the default value of 1, each time you change
+      directories the cache will be emptied and Command-T will have to
+      rescan. Higher values will make Command-T hold more directories in the
+      cache, bringing performance at the cost of memory usage. If set to 0,
+      there is no limit on the number of cached directories.
+
+                                               *g:CommandTMaxHeight*
   |g:CommandTMaxHeight|                          number (default: 0)
 
       The maximum height in lines the match window is allowed to expand to.
       If set to 0, the window will occupy as much of the available space as
       needed to show matching entries.
 
-                                                *g:CommandTAlwaysShowDotFiles*
+                                               *g:CommandTMinHeight*
+  |g:CommandTMinHeight|                          number (default: 0)
+
+      The minimum height in lines the match window is allowed to shrink to.
+      If set to 0, will default to a single line. If set above the max height,
+      will default to |g:CommandTMaxHeight|.
+
+                                               *g:CommandTAlwaysShowDotFiles*
   |g:CommandTAlwaysShowDotFiles|                 boolean (default: 0)
 
-      By default Command-T will show dot-files only if the entered search
-      string contains a dot that could cause a dot-file to match. When set to
-      a non-zero value, this setting instructs Command-T to always include
-      matching dot-files in the match list regardless of whether the search
-      string contains a dot. See also |g:CommandTNeverShowDotFiles|.
+      When showing the file listing Command-T will by default show dot-files
+      only if the entered search string contains a dot that could cause a
+      dot-file to match. When set to a non-zero value, this setting instructs
+      Command-T to always include matching dot-files in the match list
+      regardless of whether the search string contains a dot. See also
+      |g:CommandTNeverShowDotFiles|. Note that this setting only influences
+      the file listing; the buffer listing treats dot-files like any other
+      file.
 
-                                                *g:CommandTNeverShowDotFiles*
+                                               *g:CommandTNeverShowDotFiles*
   |g:CommandTNeverShowDotFiles|                  boolean (default: 0)
 
-      By default Command-T will show dot-files if the entered search string
-      contains a dot that could cause a dot-file to match. When set to a
-      non-zero value, this setting instructs Command-T to never show dot-files
-      under any circumstances. Note that it is contradictory to set both this
-      setting and |g:CommandTAlwaysShowDotFiles| to true, and if you do so Vim
-      will suffer from headaches, nervous twitches, and sudden mood swings.
+      In the file listing, Command-T will by default show dot-files if the
+      entered search string contains a dot that could cause a dot-file to
+      match. When set to a non-zero value, this setting instructs Command-T to
+      never show dot-files under any circumstances. Note that it is
+      contradictory to set both this setting and
+      |g:CommandTAlwaysShowDotFiles| to true, and if you do so Vim will suffer
+      from headaches, nervous twitches, and sudden mood swings. This setting
+      has no effect in buffer listings, where dot files are treated like any
+      other file.
 
-                                                *g:CommandTScanDotDirectories*
+                                               *g:CommandTScanDotDirectories*
   |g:CommandTScanDotDirectories|                 boolean (default: 0)
 
       Normally Command-T will not recurse into "dot-directories" (directories
@@ -2315,22 +2983,55 @@ Following is a list of all available options:
       (after scanning has been performed), whereas
       |g:CommandTScanDotDirectories| affects the behaviour at scan-time.
 
-      Note also that even with this setting on you can still use Command-T to
+      Note also that even with this setting off you can still use Command-T to
       open files inside a "dot-directory" such as ~/.vim, but you have to use
       the |:cd| command to change into that directory first. For example:
 
         :cd ~/.vim
         :CommandT
 
-                                                *g:CommandTMatchWindowAtTop*
+                                               *g:CommandTMatchWindowAtTop*
   |g:CommandTMatchWindowAtTop|                   boolean (default: 0)
 
-      When this settings is off (the default) the match window will appear at
+      When this setting is off (the default) the match window will appear at
       the bottom so as to keep it near to the prompt. Turning it on causes the
       match window to appear at the top instead. This may be preferable if you
       want the best match (usually the first one) to appear in a fixed location
       on the screen rather than moving as the number of matches changes during
       typing.
+
+                                                *g:CommandTMatchWindowReverse*
+  |g:CommandTMatchWindowReverse|                  boolean (default: 0)
+
+      When this setting is off (the default) the matches will appear from
+      top to bottom with the topmost being selected. Turning it on causes the
+      matches to be reversed so the best match is at the bottom and the
+      initially selected match is the bottom most. This may be preferable if
+      you want the best match to appear in a fixed location on the screen
+      but still be near the prompt at the bottom.
+
+                                                *g:CommandTTagIncludeFilenames*
+  |g:CommandTTagIncludeFilenames|                 boolean (default: 0)
+
+      When this setting is off (the default) the matches in the |:CommandTTag|
+      listing do not include filenames.
+
+                                                *g:CommandTHighlightColor*
+  |g:CommandTHighlightColor|                      string (default: 'PmenuSel')
+
+      Specifies the highlight color that will be used to show the currently
+      selected item in the match listing window.
+
+                                                *g:CommandTWildIgnore*
+  |g:CommandTWildIgnore|                          string (default: none)
+
+      Optionally override Vim's global |'wildignore'| setting during Command-T
+      seaches. If you wish to supplement rather than replace the global
+      setting, you can use a syntax like:
+
+        let g:CommandTWildIgnore=&wildignore . ",**/bower_components/*"
+
+      See also |command-t-wildignore|.
 
 As well as the basic options listed above, there are a number of settings that
 can be used to override the default key mappings used by Command-T. For
@@ -2347,63 +3048,69 @@ Following is a list of all map settings and their defaults:
 
                               Setting   Default mapping(s)
 
-                                       *g:CommandTBackspaceMap*
+                                      *g:CommandTBackspaceMap*
               |g:CommandTBackspaceMap|  <BS>
 
-                                       *g:CommandTDeleteMap*
+                                      *g:CommandTDeleteMap*
                  |g:CommandTDeleteMap|  <Del>
 
-                                       *g:CommandTAcceptSelectionMap*
+                                      *g:CommandTAcceptSelectionMap*
         |g:CommandTAcceptSelectionMap|  <CR>
 
-                                       *g:CommandTAcceptSelectionSplitMap*
+                                      *g:CommandTAcceptSelectionSplitMap*
    |g:CommandTAcceptSelectionSplitMap|  <C-CR>
-                                        <C-s>
+                                      <C-s>
 
-                                       *g:CommandTAcceptSelectionTabMap*
+                                      *g:CommandTAcceptSelectionTabMap*
      |g:CommandTAcceptSelectionTabMap|  <C-t>
 
-                                       *g:CommandTAcceptSelectionVSplitMap*
+                                      *g:CommandTAcceptSelectionVSplitMap*
   |g:CommandTAcceptSelectionVSplitMap|  <C-v>
 
-                                       *g:CommandTToggleFocusMap*
+                                      *g:CommandTToggleFocusMap*
             |g:CommandTToggleFocusMap|  <Tab>
 
-                                       *g:CommandTCancelMap*
+                                      *g:CommandTCancelMap*
                  |g:CommandTCancelMap|  <C-c>
-                                        <Esc> (not on all terminals)
+                                      <Esc> (not on all terminals)
 
-                                       *g:CommandTSelectNextMap*
+                                      *g:CommandTSelectNextMap*
              |g:CommandTSelectNextMap|  <C-n>
-                                        <C-j>
-                                        <Down>
+                                      <C-j>
+                                      <Down>
 
-                                       *g:CommandTSelectPrevMap*
+                                      *g:CommandTSelectPrevMap*
              |g:CommandTSelectPrevMap|  <C-p>
-                                        <C-k>
-                                        <Up>
+                                      <C-k>
+                                      <Up>
 
-                                       *g:CommandTClearMap*
+                                      *g:CommandTClearMap*
                   |g:CommandTClearMap|  <C-u>
 
-                                       *g:CommandTCursorLeftMap*
+                                      *g:CommandTRefreshMap*
+                |g:CommandTRefreshMap|  <C-f>
+
+                                      *g:CommandTQuickfixMap*
+               |g:CommandTQuickfixMap|  <C-q>
+
+                                      *g:CommandTCursorLeftMap*
              |g:CommandTCursorLeftMap|  <Left>
-                                        <C-h>
+                                      <C-h>
 
-                                       *g:CommandTCursorRightMap*
+                                      *g:CommandTCursorRightMap*
             |g:CommandTCursorRightMap|  <Right>
-                                        <C-l>
+                                      <C-l>
 
-                                       *g:CommandTCursorEndMap*
+                                      *g:CommandTCursorEndMap*
               |g:CommandTCursorEndMap|  <C-e>
 
-                                       *g:CommandTCursorStartMap*
+                                      *g:CommandTCursorStartMap*
             |g:CommandTCursorStartMap|  <C-a>
 
 In addition to the options provided by Command-T itself, some of Vim's own
 settings can be used to control behavior:
 
-                                                *command-t-wildignore*
+                                               *command-t-wildignore*
   |'wildignore'|                                 string (default: '')
 
       Vim's |'wildignore'| setting is used to determine which files should be
@@ -2420,6 +3127,11 @@ settings can be used to control behavior:
 
       See the |'wildignore'| documentation for more information.
 
+      If you want to influence Command-T's file exclusion behavior without
+      changing your global |'wildignore'| setting, you can use the
+      |g:CommandTWildIgnore| setting to apply an override that takes effect
+      only during Command-T searches.
+
 
 AUTHORS                                         *command-t-authors*
 
@@ -2427,12 +3139,16 @@ Command-T is written and maintained by Wincent Colaiuta <win@wincent.com>.
 Other contributors that have submitted patches include (in alphabetical
 order):
 
-  Lucas de Vries
-  Matthew Todd
-  Mike Lundy
-  Scott Bronson
-  Sung Pae
-  Zak Johnson
+  Anthony Panozzo           Mike Lundy                Sung Pae
+  Daniel Hahler             Nate Kane                 Thomas Pelletier
+  Felix Tjandrawibawa       Nicholas Alpi             Victor Hugo Borja
+  Gary Bernhardt            Nadav Samet               Vít Ondruch
+  Ivan Ukhov                Noon Silk                 Woody Peterson
+  Jeff Kreeftmeijer         Paul Jolly                Yan Pritzker
+  Lucas de Vries            Rainux Luo                Zak Johnson
+  Marcus Brito              Scott Bronson
+  Marian Schubert           Seth Fowler
+  Matthew Todd              Steven Moazami
 
 As this was the first Vim plug-in I had ever written I was heavily influenced
 by the design of the LustyExplorer plug-in by Stephen Bach, which I understand
@@ -2449,6 +3165,38 @@ LustyExplorer is available from:
   http://www.vim.org/scripts/script.php?script_id=1890
 
 
+DEVELOPMENT                                     *command-t-development*
+
+Development in progress can be inspected via the project's Git web-based
+repository browser at:
+
+  https://wincent.com/repos/command-t
+
+the clone URL for which is:
+
+  git://git.wincent.com/command-t.git
+
+Mirrors exist on GitHub and Gitorious; these are automatically updated once
+per hour from the authoritative repository:
+
+  https://github.com/wincent/command-t
+  https://gitorious.org/command-t/command-t
+
+Patches are welcome via the usual mechanisms (pull requests, email, posting to
+the project issue tracker etc).
+
+As many users choose to track Command-T using Pathogen, which often means
+running a version later than the last official release, the intention is that
+the "master" branch should be kept in a stable and reliable state as much as
+possible.
+
+Riskier changes are first cooked on the "next" branch for a period before
+being merged into master. You can track this branch if you're feeling wild and
+experimental, but note that the "next" branch may periodically be rewound
+(force-updated) to keep it in sync with the "master" branch after each
+official release.
+
+
 WEBSITE                                         *command-t-website*
 
 The official website for Command-T is:
@@ -2456,11 +3204,6 @@ The official website for Command-T is:
   https://wincent.com/products/command-t
 
 The latest release will always be available from there.
-
-Development in progress can be inspected via the project's Git repository
-browser at:
-
-  https://wincent.com/repos/command-t
 
 A copy of each release is also available from the official Vim scripts site
 at:
@@ -2483,7 +3226,7 @@ PayPal to win@wincent.com:
 
 LICENSE                                         *command-t-license*
 
-Copyright 2010-2011 Wincent Colaiuta. All rights reserved.
+Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -2506,8 +3249,69 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
-
 HISTORY                                         *command-t-history*
+
+1.5.1 (23 September 2013)
+- exclude large benchmark fixture file from source exports (patch from Vít
+  Ondruch)
+
+1.5 (18 September 2013)
+- don't scan "pathological" filesystem structures (ie. circular or
+  self-referential symlinks; patch from Marcus Brito)
+- gracefully handle files starting with "+" (patch from Ivan Ukhov)
+- switch default selection highlight color for better readability (suggestion
+  from André Arko), but make it possible to configure via the
+  |g:CommandTHighlightColor| setting
+- added a mapping to take the current matches and put then in the quickfix
+  window
+- performance improvements, particularly noticeable with large file
+  hierarchies
+- added |g:CommandTWildIgnore| setting (patch from Paul Jolly)
+
+1.4 (20 June 2012)
+
+- added |:CommandTTag| command (patches from Noon Silk)
+- turn off |'colorcolumn'| and |'relativenumber'| in the match window (patch
+  from Jeff Kreeftmeijer)
+- documentation update (patch from Nicholas Alpi)
+- added |:CommandTMinHeight| option (patch from Nate Kane)
+- highlight (by underlining) matched characters in the match listing (requires
+  Vim to have been compiled with the +conceal feature, which is available in
+  Vim 7.3 or later; patch from Steven Moazami)
+- added the ability to flush the cache while the match window is open using
+  <C-f>
+
+1.3.1 (18 December 2011)
+
+- fix jumplist navigation under Ruby 1.9.x (patch from Woody Peterson)
+
+1.3 (27 November 2011)
+
+- added the option to maintain multiple caches when changing among
+  directories; see the accompanying |g:CommandTMaxCachedDirectories| setting
+- added the ability to navigate using the Vim jumplist (patch from Marian
+  Schubert)
+
+1.2.1 (30 April 2011)
+
+- Remove duplicate copy of the documentation that was causing "Duplicate tag"
+  errors
+- Mitigate issue with distracting blinking cursor in non-GUI versions of Vim
+  (patch from Steven Moazami)
+
+1.2 (30 April 2011)
+
+- added |g:CommandTMatchWindowReverse| option, to reverse the order of items
+  in the match listing (patch from Steven Moazami)
+
+1.1b2 (26 March 2011)
+
+- fix a glitch in the release process; the plugin itself is unchanged since
+  1.1b
+
+1.1b (26 March 2011)
+
+- add |:CommandTBuffer| command for quickly selecting among open buffers
 
 1.0.1 (5 January 2011)
 
@@ -2623,9 +3427,9 @@ HISTORY                                         *command-t-history*
 ------------------------------------------------------------------------------
 vim:tw=78:ft=help:
 plugin/command-t.vim	[[[1
-151
+190
 " command-t.vim
-" Copyright 2010 Wincent Colaiuta. All rights reserved.
+" Copyright 2010-2013 Wincent Colaiuta. All rights reserved.
 "
 " Redistribution and use in source and binary forms, with or without
 " modification, are permitted provided that the following conditions are met:
@@ -2648,16 +3452,23 @@ plugin/command-t.vim	[[[1
 " ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 " POSSIBILITY OF SUCH DAMAGE.
 
-if exists("g:command_t_loaded")
+if exists("g:command_t_loaded") || &cp
   finish
 endif
 let g:command_t_loaded = 1
 
-command -nargs=? -complete=dir CommandT call <SID>CommandTShow(<q-args>)
+command CommandTBuffer call <SID>CommandTShowBufferFinder()
+command CommandTJump call <SID>CommandTShowJumpFinder()
+command CommandTTag call <SID>CommandTShowTagFinder()
+command -nargs=? -complete=dir CommandT call <SID>CommandTShowFileFinder(<q-args>)
 command CommandTFlush call <SID>CommandTFlush()
 
 if !hasmapto(':CommandT<CR>')
-  silent! nmap <unique> <silent> <Leader>t :CommandT<CR>
+  silent! nnoremap <unique> <silent> <Leader>t :CommandT<CR>
+endif
+
+if !hasmapto(':CommandTBuffer<CR>')
+  silent! nnoremap <unique> <silent> <Leader>b :CommandTBuffer<CR>
 endif
 
 function s:CommandTRubyWarning()
@@ -2667,9 +3478,33 @@ function s:CommandTRubyWarning()
   echohl none
 endfunction
 
-function s:CommandTShow(arg)
+function s:CommandTShowBufferFinder()
   if has('ruby')
-    ruby $command_t.show
+    ruby $command_t.show_buffer_finder
+  else
+    call s:CommandTRubyWarning()
+  endif
+endfunction
+
+function s:CommandTShowFileFinder(arg)
+  if has('ruby')
+    ruby $command_t.show_file_finder
+  else
+    call s:CommandTRubyWarning()
+  endif
+endfunction
+
+function s:CommandTShowJumpFinder()
+  if has('ruby')
+    ruby $command_t.show_jump_finder
+  else
+    call s:CommandTRubyWarning()
+  endif
+endfunction
+
+function s:CommandTShowTagFinder()
+  if has('ruby')
+    ruby $command_t.show_tag_finder
   else
     call s:CommandTRubyWarning()
   endif
@@ -2713,6 +3548,14 @@ endfunction
 
 function CommandTAcceptSelectionVSplit()
   ruby $command_t.accept_selection :command => 'vs'
+endfunction
+
+function CommandTQuickfix()
+  ruby $command_t.quickfix
+endfunction
+
+function CommandTRefresh()
+  ruby $command_t.refresh
 endfunction
 
 function CommandTToggleFocus()

@@ -1,16 +1,35 @@
 set background=light
 set guifont=Bitstream\ Vera\ Sans\ Mono\ 12
+set guioptions-=T  "remove toolbar
 set nowrap  " Line wrapping off
 set cursorline
 set hidden " <<This means that the buffer of the old file will only be hidden when you switch to the new file. When you switch back, you still have your undo history. >>
 
-filetype on  " Automatically detect file types.
-filetype plugin on
+" filetype on  " Automatically detect file types.
+filetype off  " Vundle does not want this turned on
 
 set nocompatible  " We don't want vi compatibility.
 
 let mapleader = ","
 let maplocalleader = ","
+
+
+set rtp+=~/.vim/bundle/vundle/
+call vundle#rc()
+
+" let Vundle manage Vundle
+" required! 
+Bundle 'gmarik/vundle'
+
+
+" My Bundles here:
+"Bundle 'Valloric/YouCompleteMe'
+"" Disabled because it overrides the tab key, which is in use by SnipMate.
+"" At some point, I'll migrate to UltiSnips, which should make it easy to
+"" define a new snippet key (so, not tab)
+
+filetype plugin indent on
+
 
 " Saves current session when you exit
 "au VimLeavePre * if v:this_session != '' | exec "mks! " . v:this_session | endif 
@@ -21,13 +40,17 @@ set viminfo^=!
 " Searches word under cursor in the current directory and all subdirectories, opening the quickfix window when done
 map <F4> :execute "vimgrep /" . expand("<cword>") . "/j **" <Bar> cw<CR>
 
+" Filepath of current buffer is copied to system clipboard (register +)
+noremap <silent> <F6> :let @+=expand("%:p")<CR>
+
 
 " Show horizontal scrollbar at startup
 set guioptions+=b
 
 set hlsearch
-" Pressing F5 will highlight all occurrences of the current word or selection 
 set guioptions+=a
+
+
 function! MakePattern(text)
   let pat = escape(a:text, '\')
   let pat = substitute(pat, '\_s\+$', '\\s\\*', '')
@@ -35,7 +58,15 @@ function! MakePattern(text)
   let pat = substitute(pat, '\_s\+',  '\\_s\\+', 'g')
   return '\\V' . escape(pat, '\"')
 endfunction
-vnoremap <silent> <F5> :<C-U>let @/="<C-R>=MakePattern(@*)<CR>"<CR>:set hls<CR>
+
+"" Pressing F5 will highlight all occurrences of the current word or selection 
+" vnoremap <silent> <F5> :<C-U>let @/="<C-R>=MakePattern(@*)<CR>"<CR>:set hls<CR>
+
+" When F5 is pressed, a numbered list of file names is printed, and the user needs 
+" to type a single number based on the 'menu' and press enter.
+:nnoremap <F5> :buffers<CR>:buffer<Space>
+
+
 " Press F8 to toggle highlighting on/off, and show current value.
 :noremap <F8> :set hlsearch! hlsearch?<CR>
 
@@ -64,21 +95,27 @@ highlight ShowMarksHLo gui=bold
 highlight ShowMarksHLm gui=bold
 " let g:showmarks_textlower=">>"
 
+nmap <silent> <C-Up> :wincmd k<CR>
+nmap <silent> <C-Down> :wincmd j<CR>
+nmap <silent> <C-Left> :wincmd h<CR>
+nmap <silent> <C-Right> :wincmd l<CR>
 
-" Minibuffer Explorer Settings
-"let g:miniBufExplMapWindowNavVim = 1
-let g:miniBufExplMapWindowNavArrows = 1
-"let g:miniBufExplMapCTabSwitchBufs = 1
-let g:miniBufExplModSelTarget = 1 "force miniBufExpl to try to place selected buffers into a window
-"                                  that does not have a nonmodifiable buffer
+
+"" Minibuffer Explorer Settings
+""let g:miniBufExplMapWindowNavVim = 1
+"let g:miniBufExplMapWindowNavArrows = 1
+""let g:miniBufExplMapCTabSwitchBufs = 1
+"let g:miniBufExplModSelTarget = 1 "force miniBufExpl to try to place selected buffers into a window
+""                                  that does not have a nonmodifiable buffer
 
 " Kill MBE (minibufferexplorer) just before writing .viminfo; it buggers up the session
-autocmd VimLeavePre * 
-			\ if (bufnr('-MiniBufExplorer-') != -1) |
-			\		execute 'bwipe ' . bufnr("-MiniBufExplorer-") |
-			\ endif 
+"autocmd VimLeavePre * 
+"			\ if (bufnr('-MiniBufExplorer-') != -1) |
+"			\		execute 'bwipe ' . bufnr("-MiniBufExplorer-") |
+"			\ endif 
 " }}}1
-au VimLeavePre * NERDTreeClose
+
+"au VimLeavePre * NERDTreeClose
 
 " alt+n or alt+p to navigate between entries in QuickFix
 "map <silent> <m-p> :cp <cr>
@@ -100,6 +137,8 @@ set ruler  " Ruler on
 set nu  " Line numbers on
 set nowrap  " Line wrapping off
 set timeoutlen=250  " Time to wait after ESC (default causes an annoying delay)
+"colorscheme ir_white
+set background=light
 colorscheme ir_white
  
 " Formatting (some of these are for coding in C and C++)
@@ -140,10 +179,15 @@ vmap <S-LeftMouse> <Esc><LeftMouse><C-V>
 
 
 map <F10> :NERDTree <CR>
+map <C-F10> :NERDTree <CR>
 map <F11> :NERDTreeClose <CR>
+map <C-F11> :NERDTreeClose <CR>
 let NERDTreeShowBookmarks = 1
 " Change CWD when opening a bookmark
 let NERDTreeChDirMode = 2
+
+" Use <leader> t to quickly find files through the CtrlP plugin
+silent! nnoremap <unique> <silent> <Leader>t :CtrlP<CR>
 
 map <F2> :FufFile <CR>
 
@@ -252,3 +296,40 @@ function! s:CopyMatches(line1, line2, reg)
     echo 'No hits'
   endif
 endfunction
+
+
+if version >= 700 && &term != 'cygwin' && !has('gui_running')
+  " In the color terminal, try to use CSApprox.vim plugin or
+  " guicolorscheme.vim plugin if possible in order to have consistent
+  " colors on different terminals.
+  "
+  " Uncomment one of the following lines to force 256 or 88 colors if
+  " your terminal supports it. Or comment both of them if your terminal
+  " supports neither 256 nor 88 colors. Unfortunately, querying the
+  " number of supported colors does not work on all terminals.
+  set t_Co=256
+  "set t_Co=88
+  if &t_Co == 256 || &t_Co == 88
+    " Check whether to use CSApprox.vim plugin or guicolorscheme.vim plugin.
+    if has('gui') &&
+      \ (filereadable(expand("$HOME/.vim/plugin/CSApprox.vim")) ||
+      \  filereadable(expand("$HOME/vimfiles/plugin/CSApprox.vim")))
+      let s:use_CSApprox = 1
+    elseif filereadable(expand("$HOME/.vim/plugin/guicolorscheme.vim")) ||
+      \    filereadable(expand("$HOME/vimfiles/plugin/guicolorscheme.vim"))
+      let s:use_guicolorscheme = 1
+    endif
+  endif
+endif
+if exists('s:use_CSApprox')
+  " Can use the CSApprox.vim plugin.
+  let g:CSApprox_attr_map = { 'bold' : 'bold', 'italic' : '', 'sp' : '' }
+  colorscheme ir_white
+elseif exists('s:use_guicolorscheme')
+  " Can use the guicolorscheme plugin. It needs to be loaded before
+  " running GuiColorScheme (hence the :runtime! command).
+  runtime! plugin/guicolorscheme.vim
+  GuiColorScheme ir_white
+else
+  colorscheme ir_white
+endif

@@ -81,10 +81,8 @@ hi Folded           guifg=#a0a8b0     guibg=#384048     gui=NONE      ctermfg=NO
 hi Title            guifg=black       guibg=NONE        gui=NONE      ctermfg=NONE        ctermbg=NONE        cterm=NONE
 hi treeDir          guifg=#729FCF     guibg=white       gui=bold
 
-
 " Color of selection block:
 hi Visual           guifg=NONE        guibg=#9999FF     gui=NONE      ctermfg=NONE        ctermbg=darkgray    cterm=NONE
-
 
 hi SpecialKey       guifg=#808080     guibg=#343434     gui=NONE      ctermfg=NONE        ctermbg=NONE        cterm=NONE
 
@@ -155,6 +153,38 @@ hi link Debug           Special
 "Invisible character colors
 highlight NonText guifg=#CCCCCC     guibg=white
 highlight SpecialKey guifg=#CCCCCC  guibg=white
+
+" Special for Ruby
+hi rubyRegexp                  guifg=#B18A3D      guibg=NONE      gui=NONE      ctermfg=brown          ctermbg=NONE      cterm=NONE
+hi rubyRegexpDelimiter         guifg=#FF8000      guibg=NONE      gui=NONE      ctermfg=brown          ctermbg=NONE      cterm=NONE
+hi rubyEscape                  guifg=black        guibg=NONE      gui=NONE      ctermfg=cyan           ctermbg=NONE      cterm=NONE
+hi rubyInterpolationDelimiter  guifg=#00A0A0      guibg=NONE      gui=NONE      ctermfg=blue           ctermbg=NONE      cterm=NONE
+hi rubyControl                 guifg=black        guibg=NONE      gui=bold      ctermfg=blue           ctermbg=NONE      cterm=NONE  "and break, etc
+"hi rubyGlobalVariable         guifg=#FFCCFF      guibg=NONE      gui=NONE      ctermfg=lightblue      ctermbg=NONE      cterm=NONE  "yield
+hi rubyStringDelimiter         guifg=#336633      guibg=NONE      gui=NONE      ctermfg=lightgreen     ctermbg=NONE      cterm=NONE
+hi rubyInstanceVariable        guifg=#855500      guibg=NONE      gui=NONE      ctermfg=cyan           ctermbg=NONE        cterm=NONE
+
+"rubyInclude
+"rubySharpBang
+"rubyAccess
+"rubyPredefinedVariable
+"rubyBoolean
+"rubyClassVariable
+"rubyBeginEnd
+"rubyRepeatModifier
+"hi link rubyArrayDelimiter    Special  " [ , , ]
+"rubyCurlyBlock  { , , }
+
+hi link rubyClass             Keyword 
+hi link rubyModule            Keyword 
+hi link rubyKeyword           Keyword 
+hi link rubyOperator          Operator
+hi link rubyIdentifier        Identifier
+"hi link rubyInstanceVariable  Identifier
+hi link rubyGlobalVariable    Identifier
+hi link rubyClassVariable     Identifier
+hi link rubyConstant          Type  
+
 
 " Special for PHP
 
