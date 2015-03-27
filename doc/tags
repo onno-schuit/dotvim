@@ -130,6 +130,7 @@
 :CommandTBuffer	command-t.txt	/*:CommandTBuffer*
 :CommandTFlush	command-t.txt	/*:CommandTFlush*
 :CommandTJumps	command-t.txt	/*:CommandTJumps*
+:CommandTMRU	command-t.txt	/*:CommandTMRU*
 :CommandTTag	command-t.txt	/*:CommandTTag*
 :CtrlP	ctrlp.txt	/*:CtrlP*
 :CtrlPBookmarkDir	ctrlp.txt	/*:CtrlPBookmarkDir*
@@ -225,13 +226,10 @@
 <Plug>(textobj-rubyblock-i)	textobj-rubyblock.txt	/*<Plug>(textobj-rubyblock-i)*
 AddToLispWords	clojure.txt	/*AddToLispWords*
 CSApprox.txt	CSApprox.txt	/*CSApprox.txt*
-<<<<<<< HEAD
-=======
 ClearAllCtrlPCaches	ctrlp.txt	/*ClearAllCtrlPCaches*
 ClearCtrlPCache	ctrlp.txt	/*ClearCtrlPCache*
 ControlP	ctrlp.txt	/*ControlP*
 CtrlP	ctrlp.txt	/*CtrlP*
->>>>>>> 4ed8343dd9aa91e74c013ddd3cc0512ef920f2f8
 DocLookupInteractive	clojure.txt	/*DocLookupInteractive*
 DocLookupWord	clojure.txt	/*DocLookupWord*
 EasyGrep	EasyGrep.txt	/*EasyGrep*
@@ -438,6 +436,7 @@ SourceLookupWord	clojure.txt	/*SourceLookupWord*
 StartLocalRepl	clojure.txt	/*StartLocalRepl*
 StartRepl	clojure.txt	/*StartRepl*
 SyntasticMake()	syntastic.txt	/*SyntasticMake()*
+Tabular.txt	Tabular.txt	/*Tabular.txt*
 ToggleParenRainbow	clojure.txt	/*ToggleParenRainbow*
 Vimball-copyright	pi_vimball.txt	/*Vimball-copyright*
 [%	matchit.txt	/*[%*
@@ -507,21 +506,27 @@ checksyntax.txt	checksyntax.txt	/*checksyntax.txt*
 clj-nailgun-server	clojure.txt	/*clj-nailgun-server*
 clojure.vim	clojure.txt	/*clojure.vim*
 command-t	command-t.txt	/*command-t*
+command-t-appstream	command-t.txt	/*command-t-appstream*
 command-t-authors	command-t.txt	/*command-t-authors*
 command-t-commands	command-t.txt	/*command-t-commands*
+command-t-compile	command-t.txt	/*command-t-compile*
 command-t-contents	command-t.txt	/*command-t-contents*
 command-t-development	command-t.txt	/*command-t-development*
-command-t-donations	command-t.txt	/*command-t-donations*
+command-t-faq	command-t.txt	/*command-t-faq*
 command-t-history	command-t.txt	/*command-t-history*
 command-t-installation	command-t.txt	/*command-t-installation*
 command-t-intro	command-t.txt	/*command-t-intro*
 command-t-license	command-t.txt	/*command-t-license*
 command-t-mappings	command-t.txt	/*command-t-mappings*
+command-t-neobundle	command-t.txt	/*command-t-neobundle*
 command-t-options	command-t.txt	/*command-t-options*
 command-t-pathogen	command-t.txt	/*command-t-pathogen*
 command-t-requirements	command-t.txt	/*command-t-requirements*
+command-t-tips	command-t.txt	/*command-t-tips*
 command-t-trouble-shooting	command-t.txt	/*command-t-trouble-shooting*
 command-t-usage	command-t.txt	/*command-t-usage*
+command-t-vam	command-t.txt	/*command-t-vam*
+command-t-vundle	command-t.txt	/*command-t-vundle*
 command-t-website	command-t.txt	/*command-t-website*
 command-t-wildignore	command-t.txt	/*command-t-wildignore*
 command-t.txt	command-t.txt	/*command-t.txt*
@@ -565,8 +570,6 @@ csapprox-xfce4-terminal	CSApprox.txt	/*csapprox-xfce4-terminal*
 csapprox-xiterm	CSApprox.txt	/*csapprox-xiterm*
 csapprox-xterm	CSApprox.txt	/*csapprox-xterm*
 csapprox.vim	CSApprox.txt	/*csapprox.vim*
-<<<<<<< HEAD
-=======
 ctrlp-changelog	ctrlp.txt	/*ctrlp-changelog*
 ctrlp-commands	ctrlp.txt	/*ctrlp-commands*
 ctrlp-contents	ctrlp.txt	/*ctrlp-contents*
@@ -579,7 +582,6 @@ ctrlp-mappings	ctrlp.txt	/*ctrlp-mappings*
 ctrlp-miscellaneous-configs	ctrlp.txt	/*ctrlp-miscellaneous-configs*
 ctrlp-options	ctrlp.txt	/*ctrlp-options*
 ctrlp.txt	ctrlp.txt	/*ctrlp.txt*
->>>>>>> 4ed8343dd9aa91e74c013ddd3cc0512ef920f2f8
 ds	surround.txt	/*ds*
 eb	clojure.txt	/*eb*
 ef	clojure.txt	/*ef*
@@ -668,19 +670,28 @@ g:CSApprox_loaded	CSApprox.txt	/*g:CSApprox_loaded*
 g:CSApprox_redirfallback	CSApprox.txt	/*g:CSApprox_redirfallback*
 g:CSApprox_use_showrgb	CSApprox.txt	/*g:CSApprox_use_showrgb*
 g:CSApprox_verbose_level	CSApprox.txt	/*g:CSApprox_verbose_level*
+g:CommandTAcceptSelectionCommand	command-t.txt	/*g:CommandTAcceptSelectionCommand*
 g:CommandTAcceptSelectionMap	command-t.txt	/*g:CommandTAcceptSelectionMap*
+g:CommandTAcceptSelectionSplitCommand	command-t.txt	/*g:CommandTAcceptSelectionSplitCommand*
 g:CommandTAcceptSelectionSplitMap	command-t.txt	/*g:CommandTAcceptSelectionSplitMap*
+g:CommandTAcceptSelectionTabCommand	command-t.txt	/*g:CommandTAcceptSelectionTabCommand*
 g:CommandTAcceptSelectionTabMap	command-t.txt	/*g:CommandTAcceptSelectionTabMap*
 g:CommandTAcceptSelectionVSplitMap	command-t.txt	/*g:CommandTAcceptSelectionVSplitMap*
+g:CommandTAcceptSelectionVsplitCommand	command-t.txt	/*g:CommandTAcceptSelectionVsplitCommand*
 g:CommandTAlwaysShowDotFiles	command-t.txt	/*g:CommandTAlwaysShowDotFiles*
 g:CommandTBackspaceMap	command-t.txt	/*g:CommandTBackspaceMap*
 g:CommandTCancelMap	command-t.txt	/*g:CommandTCancelMap*
 g:CommandTClearMap	command-t.txt	/*g:CommandTClearMap*
+g:CommandTClearPrevWordMap	command-t.txt	/*g:CommandTClearPrevWordMap*
 g:CommandTCursorEndMap	command-t.txt	/*g:CommandTCursorEndMap*
 g:CommandTCursorLeftMap	command-t.txt	/*g:CommandTCursorLeftMap*
 g:CommandTCursorRightMap	command-t.txt	/*g:CommandTCursorRightMap*
 g:CommandTCursorStartMap	command-t.txt	/*g:CommandTCursorStartMap*
 g:CommandTDeleteMap	command-t.txt	/*g:CommandTDeleteMap*
+g:CommandTFileScanner	command-t.txt	/*g:CommandTFileScanner*
+g:CommandTHighlightColor	command-t.txt	/*g:CommandTHighlightColor*
+g:CommandTIgnoreCase	command-t.txt	/*g:CommandTIgnoreCase*
+g:CommandTInputDebounce	command-t.txt	/*g:CommandTInputDebounce*
 g:CommandTMatchWindowAtTop	command-t.txt	/*g:CommandTMatchWindowAtTop*
 g:CommandTMatchWindowReverse	command-t.txt	/*g:CommandTMatchWindowReverse*
 g:CommandTMaxCachedDirectories	command-t.txt	/*g:CommandTMaxCachedDirectories*
@@ -689,12 +700,17 @@ g:CommandTMaxFiles	command-t.txt	/*g:CommandTMaxFiles*
 g:CommandTMaxHeight	command-t.txt	/*g:CommandTMaxHeight*
 g:CommandTMinHeight	command-t.txt	/*g:CommandTMinHeight*
 g:CommandTNeverShowDotFiles	command-t.txt	/*g:CommandTNeverShowDotFiles*
+g:CommandTQuickfixMap	command-t.txt	/*g:CommandTQuickfixMap*
 g:CommandTRefreshMap	command-t.txt	/*g:CommandTRefreshMap*
+g:CommandTSCMDirectories	command-t.txt	/*g:CommandTSCMDirectories*
 g:CommandTScanDotDirectories	command-t.txt	/*g:CommandTScanDotDirectories*
 g:CommandTSelectNextMap	command-t.txt	/*g:CommandTSelectNextMap*
 g:CommandTSelectPrevMap	command-t.txt	/*g:CommandTSelectPrevMap*
+g:CommandTSmartCase	command-t.txt	/*g:CommandTSmartCase*
 g:CommandTTagIncludeFilenames	command-t.txt	/*g:CommandTTagIncludeFilenames*
 g:CommandTToggleFocusMap	command-t.txt	/*g:CommandTToggleFocusMap*
+g:CommandTTraverseSCM	command-t.txt	/*g:CommandTTraverseSCM*
+g:CommandTWildIgnore	command-t.txt	/*g:CommandTWildIgnore*
 g:bufExplorerChgWin	bufexplorer.txt	/*g:bufExplorerChgWin*
 g:bufExplorerDefaultHelp	bufexplorer.txt	/*g:bufExplorerDefaultHelp*
 g:bufExplorerDetailedHelp	bufexplorer.txt	/*g:bufExplorerDetailedHelp*
@@ -1167,6 +1183,12 @@ syntastic-options	syntastic.txt	/*syntastic-options*
 syntastic-statusline-flag	syntastic.txt	/*syntastic-statusline-flag*
 syntastic-syntax-checkers	syntastic.txt	/*syntastic-syntax-checkers*
 syntastic.txt	syntastic.txt	/*syntastic.txt*
+tabular	Tabular.txt	/*tabular*
+tabular-intro	Tabular.txt	/*tabular-intro*
+tabular-scripting	Tabular.txt	/*tabular-scripting*
+tabular-toc	Tabular.txt	/*tabular-toc*
+tabular-walkthrough	Tabular.txt	/*tabular-walkthrough*
+tabular.vim	Tabular.txt	/*tabular.vim*
 textobj#user#define()	textobj-user.txt	/*textobj#user#define()*
 textobj#user#move()	textobj-user.txt	/*textobj#user#move()*
 textobj#user#plugin()	textobj-user.txt	/*textobj#user#plugin()*
