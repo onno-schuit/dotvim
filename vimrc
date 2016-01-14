@@ -138,7 +138,8 @@ set nu  " Line numbers on
 set nowrap  " Line wrapping off
 set timeoutlen=250  " Time to wait after ESC (default causes an annoying delay)
 "colorscheme ir_white
-colorscheme php_white
+set background=light
+colorscheme ir_white
  
 " Formatting (some of these are for coding in C and C++)
 set ts=2  " Tabs are 2 spaces
@@ -259,7 +260,7 @@ let vimclojure#ParenRainbow=1
 " Don't let the phpfolding plugin automatically fold everything
 let g:DisableAutoPHPFolding = 1
 
-au BufRead,BufNewFile *.html set filetype=php
+"au BufRead,BufNewFile *.html set filetype=php
 
 let g:CommandTMaxFiles=20000
 
@@ -323,14 +324,14 @@ endif
 if exists('s:use_CSApprox')
   " Can use the CSApprox.vim plugin.
   let g:CSApprox_attr_map = { 'bold' : 'bold', 'italic' : '', 'sp' : '' }
-  colorscheme php_white
+  colorscheme ir_white
 elseif exists('s:use_guicolorscheme')
   " Can use the guicolorscheme plugin. It needs to be loaded before
   " running GuiColorScheme (hence the :runtime! command).
   runtime! plugin/guicolorscheme.vim
-  GuiColorScheme php_white
+  GuiColorScheme ir_white
 else
-  colorscheme php_white
+  colorscheme ir_white
 endif
 
 set backupdir=~/tmp
