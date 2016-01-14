@@ -15,11 +15,11 @@ let maplocalleader = ","
 
 
 set rtp+=~/.vim/bundle/vundle/
-call vundle#rc()
+"call vundle#rc()
 
 " let Vundle manage Vundle
 " required! 
-Bundle 'gmarik/vundle'
+"Bundle 'gmarik/vundle'
 
 
 " My Bundles here:
@@ -332,3 +332,6 @@ elseif exists('s:use_guicolorscheme')
 else
   colorscheme php_white
 endif
+
+set backupdir=~/tmp
+set shortmess+=A
